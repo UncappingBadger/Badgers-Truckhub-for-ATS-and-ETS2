@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <!-- Vendored third-party telemetry client (Telemetry\SCSSdkClient) predates nullable annotations -->
+    <NoWarn>CS8618;CS8603;CS8600;CS8601;CS8602</NoWarn>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>TruckHub</AssemblyName>
+    <RootNamespace>TruckHub</RootNamespace>
+    <Version>1.0.0</Version>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+
+    <!-- Publish settings: one self-contained exe, no separate .NET install required -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embedded (not Content) so the native plugin DLL travels inside the single-file exe
+         regardless of publish/runtime quirks around loose Content files. -->
+    <None Remove="Assets\plugin\scs-telemetry.dll" />
+    <EmbeddedResource Include="Assets\plugin\scs-telemetry.dll">
+      <LogicalName>TruckHub.scs-telemetry.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
