@@ -20,6 +20,17 @@ public sealed class TelemetryService : IDisposable
 
     public event Action<TelemetrySnapshot>? SnapshotUpdated;
 
+    /// <summary>
+    /// Fires when a job is successfully delivered (not cancelled). Carries no payload - subscribers
+    /// that need the job's details should track them from SnapshotUpdated while OnJob is true, since
+    /// by the time this fires the telemetry's own job fields may already be cleared for "no job".
+    /// </summary>
+    public event Action? JobDelivered;
+
+    /// <summary>Fires when a job is cancelled/failed - the counterpart to JobDelivered, so subscribers
+    /// know to discard whatever they were tracking instead of logging it as a completed job.</summary>
+    public event Action? JobCancelled;
+
     /// <summary>Latest snapshot, readable synchronously (e.g. from a global hotkey handler) without waiting for the next poll event.</summary>
     public TelemetrySnapshot LastSnapshot => _lastSnapshot;
 
@@ -36,8 +47,16 @@ public sealed class TelemetryService : IDisposable
             $"{_lastSnapshot.CompanyDestination}/{_lastSnapshot.CityDestination}, " +
             $"cargo={_lastSnapshot.CargoName} {_lastSnapshot.CargoMassKg / 1000:0}T, " +
             $"income={_lastSnapshot.Income}, plannedKm={_lastSnapshot.PlannedDistanceKm}");
-        _telemetry.JobDelivered += (_, _) => AppLogger.Log("Job delivered");
-        _telemetry.JobCancelled += (_, _) => AppLogger.Log("Job cancelled");
+        _telemetry.JobDelivered += (_, _) =>
+        {
+            AppLogger.Log("Job delivered");
+            _uiContext.Post(_ => JobDelivered?.Invoke(), null);
+        };
+        _telemetry.JobCancelled += (_, _) =>
+        {
+            AppLogger.Log("Job cancelled");
+            _uiContext.Post(_ => JobCancelled?.Invoke(), null);
+        };
         _telemetry.Fined += (_, _) => AppLogger.Log("Fined by police");
         _telemetry.Tollgate += (_, _) => AppLogger.Log("Tollgate paid");
         _telemetry.Ferry += (_, _) => AppLogger.Log("Ferry used");
@@ -69,6 +88,7 @@ public sealed class TelemetryService : IDisposable
         }
 
         var isHShifter = data.TruckValues.ConstantsValues.MotorValues.ShifterTypeValue == ShifterType.HShifter;
+        var isAutomatic = data.TruckValues.ConstantsValues.MotorValues.ShifterTypeValue == ShifterType.Automatic;
         var hShifterSlot = data.TruckValues.CurrentValues.MotorValues.GearValues.HShifterSlot;
         var gearDashboards = data.TruckValues.CurrentValues.DashboardValues.GearDashboards;
         var selector = data.TruckValues.CurrentValues.MotorValues.GearValues.HShifterSelector;
@@ -95,6 +115,7 @@ public sealed class TelemetryService : IDisposable
             CruiseControlOn = data.TruckValues.CurrentValues.DashboardValues.CruiseControl,
             CruiseControlSpeedKph = data.TruckValues.CurrentValues.DashboardValues.CruiseControlSpeed.Kph,
             ParkingBrakeOn = data.TruckValues.CurrentValues.MotorValues.BrakeValues.ParkingBrake,
+            ElectricEnabled = data.TruckValues.CurrentValues.ElectricEnabled,
             TurnSignalLeftOn = data.TruckValues.CurrentValues.LightsValues.BlinkerLeftOn,
             TurnSignalRightOn = data.TruckValues.CurrentValues.LightsValues.BlinkerRightOn,
             SidelightsOn = data.TruckValues.CurrentValues.LightsValues.Parking,
@@ -104,6 +125,10 @@ public sealed class TelemetryService : IDisposable
             DifferentialLockOn = data.TruckValues.CurrentValues.DifferentialLock,
             LiftAxleUp = data.TruckValues.CurrentValues.LiftAxle,
             HasLiftAxle = Array.Exists(data.TruckValues.ConstantsValues.WheelsValues.Liftable ?? Array.Empty<bool>(), l => l),
+            RetarderLevel = data.TruckValues.CurrentValues.MotorValues.BrakeValues.RetarderLevel,
+            RetarderStepCount = data.TruckValues.ConstantsValues.MotorValues.RetarderStepCount,
+            MotorBrakeOn = data.TruckValues.CurrentValues.MotorValues.BrakeValues.MotorBrake,
+            GameTime = data.CommonValues.GameTime.Date,
             OnJob = data.SpecialEventsValues.OnJob,
             Income = data.JobValues.Income,
             PlannedDistanceKm = data.JobValues.PlannedDistanceKm,
@@ -127,9 +152,11 @@ public sealed class TelemetryService : IDisposable
             WarnWaterTemperature = data.TruckValues.CurrentValues.DashboardValues.WarningValues.WaterTemperature,
             WarnBatteryVoltage = data.TruckValues.CurrentValues.DashboardValues.WarningValues.BatteryVoltage,
             RemainingDeliveryMinutes = data.JobValues.RemainingDeliveryTime.Value,
+            RestTimeMinutes = data.CommonValues.NextRestStop.Value,
             Rpm = data.TruckValues.CurrentValues.DashboardValues.RPM,
             EngineRpmMax = data.TruckValues.ConstantsValues.MotorValues.EngineRpmMax,
             IsHShifter = isHShifter,
+            IsAutomatic = isAutomatic,
             HShifterSlot = hShifterSlot,
             SplitterHigh = splitterHigh,
             GearboxFingerprint = gearboxFingerprint,

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Input;
 using TruckHub.Models;
@@ -14,21 +16,36 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private readonly SettingsService _settingsService;
     private readonly TelemetryService _telemetryService;
     private readonly GearCaptureService _gearCaptureService;
+    private readonly UpdateCheckService _updateCheckService;
     private readonly AppSettings _settings;
 
     private TelemetrySnapshot _snapshot = TelemetrySnapshot.Disconnected;
     private string _normalGearNumberInput = "";
     private string _splitterGearNumberInput = "";
+    private bool _isCheckingForUpdate;
+    private bool _isAppConfigureTab = true;
 
-    public SettingsViewModel(SettingsService settingsService, TelemetryService telemetryService, GearCaptureService gearCaptureService)
+    public SettingsViewModel(SettingsService settingsService, TelemetryService telemetryService,
+        GearCaptureService gearCaptureService, UpdateCheckService updateCheckService)
     {
         _settingsService = settingsService;
         _telemetryService = telemetryService;
         _gearCaptureService = gearCaptureService;
+        _updateCheckService = updateCheckService;
         _settings = settingsService.Load();
 
         _telemetryService.SnapshotUpdated += OnSnapshotUpdated;
         _gearCaptureService.Changed += OnCaptureChanged;
+        _updateCheckService.Checked += OnUpdateChecked;
+
+        CheckForUpdatesCommand = new RelayCommand(_ => _ = RunCheckForUpdatesAsync(), _ => !_isCheckingForUpdate);
+        OpenUpdateLinkCommand = new RelayCommand(_ =>
+        {
+            if (_updateCheckService.LastResult?.ReleaseUrl is { } url)
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+        });
 
         BrowseEts2Command = new RelayCommand(_ => Browse(SimGame.Ets2, "Euro Truck Simulator 2"));
         ClearEts2Command = new RelayCommand(_ => Clear(SimGame.Ets2));
@@ -59,7 +76,26 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _settingsService.Save(_settings);
             OnPropertyChanged(nameof(FuelUnitLabel));
         });
+
+        SelectAppConfigureTabCommand = new RelayCommand(_ => SetActiveTab(appConfigure: true));
+        SelectUiSetupTabCommand = new RelayCommand(_ => SetActiveTab(appConfigure: false));
     }
+
+    public ICommand SelectAppConfigureTabCommand { get; }
+    public ICommand SelectUiSetupTabCommand { get; }
+
+    public bool IsAppConfigureTab => _isAppConfigureTab;
+    public bool IsUiSetupTab => !_isAppConfigureTab;
+
+    private void SetActiveTab(bool appConfigure)
+    {
+        _isAppConfigureTab = appConfigure;
+        OnPropertyChanged(nameof(IsAppConfigureTab));
+        OnPropertyChanged(nameof(IsUiSetupTab));
+    }
+
+    public ICommand CheckForUpdatesCommand { get; }
+    public ICommand OpenUpdateLinkCommand { get; }
 
     public ICommand BrowseEts2Command { get; }
     public ICommand ClearEts2Command { get; }
@@ -86,6 +122,68 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Raised after a plugin (re)install attempt so the window hosting this can refresh its main telemetry status.</summary>
     public event Action? PathsChanged;
+
+    // --- Update check ---
+
+    public bool IsCheckingForUpdate => _isCheckingForUpdate;
+
+    public bool HasUpdateAvailable => _updateCheckService.LastResult?.UpdateAvailable ?? false;
+
+    public string? UpdateReleaseUrl => _updateCheckService.LastResult?.ReleaseUrl;
+
+    public string UpdateStatusText
+    {
+        get
+        {
+            if (_isCheckingForUpdate)
+            {
+                return "Checking for updates...";
+            }
+
+            var result = _updateCheckService.LastResult;
+            if (result == null)
+            {
+                return "";
+            }
+
+            if (!result.CheckSucceeded)
+            {
+                return "Couldn't check for updates - no internet connection?";
+            }
+
+            return result.UpdateAvailable
+                ? $"Update available: {result.LatestVersion}"
+                : "You're up to date.";
+        }
+    }
+
+    private async Task RunCheckForUpdatesAsync()
+    {
+        _isCheckingForUpdate = true;
+        OnPropertyChanged(nameof(IsCheckingForUpdate));
+        OnPropertyChanged(nameof(UpdateStatusText));
+        CommandManager.InvalidateRequerySuggested();
+
+        try
+        {
+            await _updateCheckService.CheckAsync();
+        }
+        finally
+        {
+            _isCheckingForUpdate = false;
+            OnPropertyChanged(nameof(IsCheckingForUpdate));
+            OnPropertyChanged(nameof(UpdateStatusText));
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
+    private void OnUpdateChecked(UpdateCheckResult result)
+    {
+        OnPropertyChanged(nameof(UpdateStatusText));
+        OnPropertyChanged(nameof(HasUpdateAvailable));
+        OnPropertyChanged(nameof(UpdateReleaseUrl));
+        CommandManager.InvalidateRequerySuggested();
+    }
 
     // --- Gearbox calibration ---
 
@@ -274,6 +372,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         set { _settings.ShowSpeedSection = value; _settingsService.Save(_settings); OnPropertyChanged(); }
     }
 
+    public bool ShowSpeedSign
+    {
+        get => _settings.ShowSpeedSign;
+        set { _settings.ShowSpeedSign = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
     public bool ShowCruiseControl
     {
         get => _settings.ShowCruiseControl;
@@ -358,6 +462,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         set { _settings.ShowWarnings = value; _settingsService.Save(_settings); OnPropertyChanged(); }
     }
 
+    public bool ShowGameClock
+    {
+        get => _settings.ShowGameClock;
+        set { _settings.ShowGameClock = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    public bool FatigueSimulationEnabled
+    {
+        get => _settings.FatigueSimulationEnabled;
+        set { _settings.FatigueSimulationEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
     private string DescribeStatus(SimGame game, string? manualPath)
     {
         if (!string.IsNullOrWhiteSpace(manualPath))
@@ -435,6 +551,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     {
         _telemetryService.SnapshotUpdated -= OnSnapshotUpdated;
         _gearCaptureService.Changed -= OnCaptureChanged;
+        _updateCheckService.Checked -= OnUpdateChecked;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -36,6 +36,7 @@ public sealed class AppSettings
     // Per-component display toggles - all default on. Turning one off removes it from layout
     // entirely (the card reflows to fit whatever's left) rather than leaving blank space.
     public bool ShowSpeedSection { get; set; } = true;
+    public bool ShowSpeedSign { get; set; } = true;
     public bool ShowCruiseControl { get; set; } = true;
     public bool ShowParkingBrake { get; set; } = true;
     public bool ShowLightsStatus { get; set; } = true;
@@ -50,4 +51,12 @@ public sealed class AppSettings
     public bool ShowTripFuelForecast { get; set; } = true;
     public bool ShowAdBlue { get; set; } = true;
     public bool ShowWarnings { get; set; } = true;
+    public bool ShowGameClock { get; set; } = true;
+
+    /// <summary>
+    /// The game's rest-time telemetry field reads the same whether the fatigue simulation is off
+    /// or just hasn't ticked down yet, so there's no reliable way to auto-detect it - the user has
+    /// to tell us. Defaults off since most players don't run the fatigue simulation.
+    /// </summary>
+    public bool FatigueSimulationEnabled { get; set; } = false;
 }

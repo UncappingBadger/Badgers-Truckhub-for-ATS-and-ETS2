@@ -1,3 +1,5 @@
+using System;
+
 namespace TruckHub.Models;
 
 public enum SimGame
@@ -20,6 +22,13 @@ public sealed class TelemetrySnapshot
     public float CruiseControlSpeedKph { get; init; }
     public bool ParkingBrakeOn { get; init; }
 
+    /// <summary>
+    /// Truck's electrics (ignition) on/off. Real gauges are electrically driven and have no power of
+    /// their own to hold a reading, so they rest at their spring-loaded default - Empty, for a fuel
+    /// gauge - whenever this is off. See AppSettings/MainViewModel FuelNeedleAngle.
+    /// </summary>
+    public bool ElectricEnabled { get; init; }
+
     // BlinkerLeftOn/BlinkerRightOn already reflect the actual current bulb state (not just "enabled"
     // - the game blinks these itself, and hazards drive both together), so binding straight to them
     // gives correct flashing for free without any timer on our side.
@@ -36,6 +45,19 @@ public sealed class TelemetrySnapshot
     // instead of permanently showing a meaningless "down".
     public bool LiftAxleUp { get; init; }
     public bool HasLiftAxle { get; init; }
+
+    // RetarderStepCount is the truck's own configured max (0 on trucks with no retarder fitted at
+    // all, so the icon just doesn't show rather than always reading "R"); RetarderLevel is 0..that
+    // max, 0 meaning disengaged.
+    public uint RetarderLevel { get; init; }
+    public uint RetarderStepCount { get; init; }
+
+    /// <summary>Engine brake (Jake brake) - on/off, no levels.</summary>
+    public bool MotorBrakeOn { get; init; }
+
+    /// <summary>In-game time of day (the SDK's GameTime.Date - year/day portion isn't meaningful, only
+    /// the time-of-day component is).</summary>
+    public DateTime GameTime { get; init; }
 
     public bool OnJob { get; init; }
     public ulong Income { get; init; }
@@ -68,10 +90,23 @@ public sealed class TelemetrySnapshot
 
     public int RemainingDeliveryMinutes { get; init; }
 
+    /// <summary>
+    /// Minutes until the driver needs a rest stop, per the game's optional fatigue simulation.
+    /// Only meaningful when that simulation is enabled in-game - see AppSettings.FatigueSimulationEnabled.
+    /// </summary>
+    public int RestTimeMinutes { get; init; }
+
     public int GearDashboardsRaw { get; init; }
     public float Rpm { get; init; }
     public float EngineRpmMax { get; init; }
     public bool IsHShifter { get; init; }
+
+    /// <summary>
+    /// True when the player's shifter type is the SDK's "Automatic" (torque-converter style, no
+    /// manual gear selection) - distinct from IsHShifter=false, which also covers plain sequential/
+    /// "Manual" mode. See MainViewModel.GearDisplay for the D/N/P/R switch this drives.
+    /// </summary>
+    public bool IsAutomatic { get; init; }
     public bool? RangeIsHigh { get; init; }
     public bool SplitterHigh { get; init; }
     public uint HShifterSlot { get; init; }
