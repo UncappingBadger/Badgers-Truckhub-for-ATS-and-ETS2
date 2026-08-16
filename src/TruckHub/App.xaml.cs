@@ -12,6 +12,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        CpuAffinity.PinCurrentProcess();
+
         AppLogger.Log("TruckHub started");
 
         DispatcherUnhandledException += (_, args) =>

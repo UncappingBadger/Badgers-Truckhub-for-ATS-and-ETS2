@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.1 - 2026-08-16
+
+### Changed
+- TruckHub now reserves a slice of CPU cores it will never use (2 cores on 4+-core machines, 1 on 2-3 core machines), guaranteeing ATS/ETS2 always has uncontested room regardless of what TruckHub's own UI is doing. Matches the same protection already used in this developer's other companion apps (PalHub, ZoidHub).
+
 ## v1.1 - 2026-08-02
 
 ### Added
