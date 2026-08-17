@@ -1,0 +1,145 @@
+<Window x:Class="TruckHub.Views.ModOrderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System.Windows.Controls;assembly=PresentationFramework"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="TruckHub - Mod Order"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="#161616">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="0" GlassFrameThickness="0" CornerRadius="0" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <sys:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,4" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Custom title bar -->
+        <Grid Grid.Row="0" Background="#202020" Height="28" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="TRUCKHUB · MOD ORDER" Foreground="#888888" FontSize="11"
+                       FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+            <Button Grid.Column="1" Content="✕" Click="Close_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Width="28" Height="28" FontSize="10" Background="Transparent"
+                    Foreground="White" BorderThickness="0" />
+        </Grid>
+
+        <StackPanel Grid.Row="1" Margin="16">
+            <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8">
+                Suggests a load order for your installed mods, based on the community-recommended
+                category order. Doesn't touch or reorder anything in-game - you still apply it
+                yourself in the Mod Manager.
+            </TextBlock>
+
+            <!-- Disclaimer: this is a community heuristic, not a guarantee - some mods are fussy
+                 about load order regardless of category, and can still conflict/crash even
+                 correctly ordered. Amber, matching the app's existing "worth paying attention to"
+                 convention, so it doesn't get skimmed past as routine body text. -->
+            <Border Background="#332B1A" BorderBrush="#FFC24C" BorderThickness="1" CornerRadius="4"
+                    Padding="8,6" Margin="0,0,0,14">
+                <TextBlock Foreground="#FFC24C" FontSize="11" TextWrapping="Wrap">
+                    This is the community's best-effort order, not a guarantee - some mods are
+                    fussy regardless of category and can still conflict or crash even correctly
+                    ordered. Manual tweaking may still be needed.
+                </TextBlock>
+            </Border>
+
+            <ScrollViewer MaxHeight="560" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+
+                    <!-- ATS -->
+                    <StackPanel Margin="0,0,0,14">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="American Truck Simulator" Foreground="White" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                            <Button Content="{Binding ScanAtsButtonText}" Command="{Binding ScanAtsCommand}"
+                                    Margin="10,0,0,0" Padding="8,2" FontSize="11" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding AtsFolderNotFoundMessage}" Foreground="#AAAAAA" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Visibility="{Binding HasAtsFolderMessage, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding AtsGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,10">
+                                        <TextBlock Text="{Binding TierName}" Foreground="#7FB0FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3" />
+                                        <ItemsControl ItemsSource="{Binding Mods}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Foreground="#DDDDDD" FontSize="12" Margin="10,1,0,0" TextWrapping="Wrap">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="{}{0}. {1}">
+                                                                <Binding Path="OrderNumber" />
+                                                                <Binding Path="DisplayName" />
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- ETS2 -->
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Euro Truck Simulator 2" Foreground="White" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                            <Button Content="{Binding ScanEts2ButtonText}" Command="{Binding ScanEts2Command}"
+                                    Margin="10,0,0,0" Padding="8,2" FontSize="11" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Ets2FolderNotFoundMessage}" Foreground="#AAAAAA" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Visibility="{Binding HasEts2FolderMessage, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Ets2Groups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,10">
+                                        <TextBlock Text="{Binding TierName}" Foreground="#7FB0FF" FontSize="12" FontWeight="Bold" Margin="0,0,0,3" />
+                                        <ItemsControl ItemsSource="{Binding Mods}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Foreground="#DDDDDD" FontSize="12" Margin="10,1,0,0" TextWrapping="Wrap">
+                                                        <TextBlock.Text>
+                                                            <MultiBinding StringFormat="{}{0}. {1}">
+                                                                <Binding Path="OrderNumber" />
+                                                                <Binding Path="DisplayName" />
+                                                            </MultiBinding>
+                                                        </TextBlock.Text>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
+        </StackPanel>
+    </Grid>
+</Window>

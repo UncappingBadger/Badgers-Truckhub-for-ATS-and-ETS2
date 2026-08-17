@@ -193,6 +193,35 @@
 
                         <Rectangle Height="1" Fill="#333333" Margin="0,0,0,16" />
 
+                        <!-- Mod folder locations -->
+                        <TextBlock Text="Mod folder locations" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12">
+                            Used by the mod load-order suggestion (the ☰ button on the main window). Auto-detects
+                            the standard Documents mod folder - only set this if yours is somewhere nonstandard.
+                        </TextBlock>
+
+                        <!-- ETS2 -->
+                        <TextBlock Text="Euro Truck Simulator 2" Foreground="#CCCCCC" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Ets2ModFolderStatusDisplay}" Foreground="#AAAAAA" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,2,0,6" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <Button Content="Browse..." Command="{Binding BrowseEts2ModFolderCommand}" />
+                            <Button Content="Clear override" Command="{Binding ClearEts2ModFolderCommand}"
+                                    Visibility="{Binding HasManualEts2ModFolder, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+
+                        <!-- ATS -->
+                        <TextBlock Text="American Truck Simulator" Foreground="#CCCCCC" FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding AtsModFolderStatusDisplay}" Foreground="#AAAAAA" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,2,0,6" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <Button Content="Browse..." Command="{Binding BrowseAtsModFolderCommand}" />
+                            <Button Content="Clear override" Command="{Binding ClearAtsModFolderCommand}"
+                                    Visibility="{Binding HasManualAtsModFolder, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+
+                        <Rectangle Height="1" Fill="#333333" Margin="0,0,0,16" />
+
                         <!-- Gearbox calibration -->
                         <TextBlock Text="Gearbox calibration" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
                         <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8">

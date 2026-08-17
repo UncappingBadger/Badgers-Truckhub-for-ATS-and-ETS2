@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2 - 2026-08-17
+
+### Added
+- **Suggested mod load order** - the ☰ button scans your ATS/ETS2 mod folder (on demand, per game, never automatically) and suggests a load order based on the community-recommended category order, plus a new Map Mods tier that loads first. Reads each mod's manifest and, where that's not specific enough, keyword-matches its name (lights/LED packs, tuning packs, transmissions, map-expansion mods all recognized); anything it still can't confidently place shows up as "Unsorted" rather than a guess. A mod and its "Open Def" companion are always kept together and classified the same way, never split apart. Numbered continuously so the order reads unambiguously. A manual mod-folder override was added to Settings alongside the existing game-install override, for anyone with a nonstandard setup.
+- A clear disclaimer that the suggested order is the community's best effort, not a guarantee - some mods can still conflict regardless of order.
+
+### Fixed
+- The mod-order scan's "folder not found" / "no .scs files" messages weren't actually visible - a string property was bound directly through `BooleanToVisibilityConverter`, which silently collapses anything that isn't a real bool, so a genuinely-empty scan looked like nothing had happened.
+
 ## v1.1.1 - 2026-08-16
 
 ### Changed

@@ -30,6 +30,12 @@ public sealed class AppSettings
     public string? ManualEts2Path { get; set; }
     public string? ManualAtsPath { get; set; }
 
+    /// <summary>Overrides mod-folder auto-detection (normally Documents\&lt;Game&gt;\mod) for the
+    /// mod load-order scanner. Null means "keep auto-detecting" - only needed if a user has moved
+    /// their mod folder somewhere nonstandard.</summary>
+    public string? ManualEts2ModFolderPath { get; set; }
+    public string? ManualAtsModFolderPath { get; set; }
+
     /// <summary>Keyed by GearboxFingerprint. See GearboxCalibration for what each entry means.</summary>
     public Dictionary<string, GearboxCalibration> GearboxCalibrations { get; set; } = new();
 

@@ -4,7 +4,7 @@
         xmlns:sys="clr-namespace:System.Windows.Controls;assembly=PresentationFramework"
         xmlns:conv="clr-namespace:TruckHub.Converters"
         xmlns:views="clr-namespace:TruckHub.Views"
-        Title="TruckHub v1.1.1"
+        Title="TruckHub v1.2"
         Width="300" Height="330"
         MinWidth="260" MinHeight="220"
         WindowStyle="None"
@@ -60,6 +60,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!-- Same branding cluster as PalHub (app name / "By Badger" / version-or-build-tag)
@@ -69,11 +70,15 @@
                                VerticalAlignment="Center" />
                     <TextBlock Text="By Badger" Foreground="#FFC24C" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
-                    <TextBlock Text="v1.1.1" Foreground="#888888" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="v1.2" Foreground="#888888" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="⚙" Click="Settings_Click"
+                <Button Grid.Column="1" Content="☰" Click="ModOrder_Click"
+                        Width="20" Height="20" Padding="0" Margin="0,0,6,0" FontSize="11" Background="#2A2A2A"
+                        Foreground="White" BorderThickness="0" ToolTip="Suggested mod load order" />
+
+                <Button Grid.Column="2" Content="⚙" Click="Settings_Click"
                         Width="20" Height="20" Padding="0" Margin="0,0,6,0" FontSize="11" Background="#2A2A2A"
                         Foreground="{Binding SettingsButtonColor}" BorderThickness="0"
                         ToolTip="{Binding SettingsButtonTooltip}">
@@ -107,11 +112,11 @@
                     </Button.Style>
                 </Button>
 
-                <Button Grid.Column="2" Content="⛶" Click="Fullscreen_Click"
+                <Button Grid.Column="3" Content="⛶" Click="Fullscreen_Click"
                         Width="20" Height="20" Padding="0" Margin="0,0,6,0" FontSize="11" Background="#2A2A2A"
                         Foreground="White" BorderThickness="0" ToolTip="Toggle fullscreen" />
 
-                <Button Grid.Column="3" Content="✕" Click="Close_Click"
+                <Button Grid.Column="4" Content="✕" Click="Close_Click"
                         Width="20" Height="20" FontSize="10" Background="#2A2A2A"
                         Foreground="White" BorderThickness="0" />
             </Grid>

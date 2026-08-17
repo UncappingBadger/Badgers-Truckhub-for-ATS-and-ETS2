@@ -58,13 +58,31 @@ turned on, since that's what feeds the speed limit sign.
 - **Drag** anywhere on the window to move it, and use the **grip in the bottom-right corner** to
   resize it — everything scales to fit, job logbook included (see below).
 - The **⛶ button** snaps the window to fill your whole screen; click it again to go back.
+- The **☰ button** opens the suggested mod load order (see below).
 - The **⚙ button** opens Settings, split into two tabs:
-  - **App Configure** — check for updates, point TruckHub at a game install manually, and calibrate
-    gear numbers for an H-shifter truck
+  - **App Configure** — check for updates, point TruckHub at a game install manually, calibrate
+    gear numbers for an H-shifter truck, and point TruckHub at your mod folder manually if it's
+    somewhere nonstandard
   - **UI Setup** — switch between MPH/KM-H, Tonnes/Lbs, and Litres/Gallons independently of each
     other; turn any HUD element on or off, including the speed sign, in-game clock, and
     current-speed gauge separately; and turn on the rest timer if you drive with fatigue simulation
     enabled
+
+### Suggested mod load order
+
+ATS/ETS2 both want mods loaded in roughly the right order for best results — get it wrong and you
+can see visual glitches or crashes. Click **☰** and hit **Scan** for whichever game you want (ATS
+and ETS2 are scanned separately, on demand — TruckHub never scans on its own, only when you ask).
+It reads every mod's own manifest (and, where that's not specific enough, its file name) and sorts
+them into the community-recommended category order: UI & Menus, Economy & Progression, Sound
+Frameworks, Graphics & Season Weather, Physics Systems, Interior & Cabin Accessories, Standalone
+Trucks, Paint Jobs & Skins, Wheel & Tire Packs, then Trailers & Cargo. Mods it can't confidently
+place show up as "Unsorted" rather than a guess.
+
+**This is a suggestion, not a guarantee.** It doesn't touch, reorder, or enable/disable anything in
+your actual Mod Manager — you still apply the order yourself. Some mods are fussy regardless of
+category and can still conflict or crash even correctly ordered, so treat this as a solid starting
+point, not the last word.
 
 ### Calibrating an H-shifter
 

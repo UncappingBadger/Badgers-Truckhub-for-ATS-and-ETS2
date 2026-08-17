@@ -323,5 +323,11 @@ public partial class MainWindow : Window
         _viewModel.ReloadSettings();
     }
 
+    private void ModOrder_Click(object sender, RoutedEventArgs e)
+    {
+        var modOrderWindow = new Views.ModOrderWindow(_settingsService) { Owner = this };
+        modOrderWindow.ShowDialog();
+    }
+
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

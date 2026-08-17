@@ -52,6 +52,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         BrowseAtsCommand = new RelayCommand(_ => Browse(SimGame.Ats, "American Truck Simulator"));
         ClearAtsCommand = new RelayCommand(_ => Clear(SimGame.Ats));
 
+        BrowseEts2ModFolderCommand = new RelayCommand(_ => BrowseModFolder(SimGame.Ets2, "Euro Truck Simulator 2"));
+        ClearEts2ModFolderCommand = new RelayCommand(_ => ClearModFolder(SimGame.Ets2));
+        BrowseAtsModFolderCommand = new RelayCommand(_ => BrowseModFolder(SimGame.Ats, "American Truck Simulator"));
+        ClearAtsModFolderCommand = new RelayCommand(_ => ClearModFolder(SimGame.Ats));
+
         SetNormalGearCommand = new RelayCommand(_ => SetGear(splitter: false), _ => CanSetGear(NormalGearNumberInput, wantSplitter: false));
         SetSplitterGearCommand = new RelayCommand(_ => SetGear(splitter: true), _ => CanSetGear(SplitterGearNumberInput, wantSplitter: true));
         ClearCalibrationCommand = new RelayCommand(_ => ClearCalibration(), _ => HasCalibrationForCurrentGearbox);
@@ -102,6 +107,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public ICommand BrowseAtsCommand { get; }
     public ICommand ClearAtsCommand { get; }
 
+    public ICommand BrowseEts2ModFolderCommand { get; }
+    public ICommand ClearEts2ModFolderCommand { get; }
+    public ICommand BrowseAtsModFolderCommand { get; }
+    public ICommand ClearAtsModFolderCommand { get; }
+
     public ICommand SetNormalGearCommand { get; }
     public ICommand SetSplitterGearCommand { get; }
     public ICommand ClearCalibrationCommand { get; }
@@ -119,6 +129,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 
     public string Ets2StatusDisplay => DescribeStatus(SimGame.Ets2, _settings.ManualEts2Path);
     public string AtsStatusDisplay => DescribeStatus(SimGame.Ats, _settings.ManualAtsPath);
+
+    public bool HasManualEts2ModFolder => !string.IsNullOrWhiteSpace(_settings.ManualEts2ModFolderPath);
+    public bool HasManualAtsModFolder => !string.IsNullOrWhiteSpace(_settings.ManualAtsModFolderPath);
+
+    public string Ets2ModFolderStatusDisplay => DescribeModFolderStatus(SimGame.Ets2, _settings.ManualEts2ModFolderPath);
+    public string AtsModFolderStatusDisplay => DescribeModFolderStatus(SimGame.Ats, _settings.ManualAtsModFolderPath);
 
     /// <summary>Raised after a plugin (re)install attempt so the window hosting this can refresh its main telemetry status.</summary>
     public event Action? PathsChanged;
@@ -530,6 +546,72 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 
         _settingsService.Save(_settings);
         ReinstallAndRefresh();
+    }
+
+    private string DescribeModFolderStatus(SimGame game, string? manualPath)
+    {
+        if (!string.IsNullOrWhiteSpace(manualPath))
+        {
+            return ModFolderLocator.LooksLikeValidModFolder(manualPath)
+                ? $"Manually set: {manualPath}"
+                : $"Manually set (folder doesn't look right): {manualPath}";
+        }
+
+        var autoPath = ModFolderLocator.FindAutoPath(game);
+        return autoPath != null
+            ? $"Found automatically: {autoPath}"
+            : "Not found - set it manually below if your mod folder is somewhere nonstandard.";
+    }
+
+    private void BrowseModFolder(SimGame game, string title)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = $"Select your {title} mod folder",
+            UseDescriptionForTitle = true,
+        };
+
+        if (dialog.ShowDialog() != DialogResult.OK)
+        {
+            return;
+        }
+
+        var path = dialog.SelectedPath;
+
+        if (game == SimGame.Ets2)
+        {
+            _settings.ManualEts2ModFolderPath = path;
+        }
+        else
+        {
+            _settings.ManualAtsModFolderPath = path;
+        }
+
+        _settingsService.Save(_settings);
+        RaiseModFolderChanged();
+    }
+
+    private void ClearModFolder(SimGame game)
+    {
+        if (game == SimGame.Ets2)
+        {
+            _settings.ManualEts2ModFolderPath = null;
+        }
+        else
+        {
+            _settings.ManualAtsModFolderPath = null;
+        }
+
+        _settingsService.Save(_settings);
+        RaiseModFolderChanged();
+    }
+
+    private void RaiseModFolderChanged()
+    {
+        OnPropertyChanged(nameof(HasManualEts2ModFolder));
+        OnPropertyChanged(nameof(HasManualAtsModFolder));
+        OnPropertyChanged(nameof(Ets2ModFolderStatusDisplay));
+        OnPropertyChanged(nameof(AtsModFolderStatusDisplay));
     }
 
     private void ReinstallAndRefresh()
