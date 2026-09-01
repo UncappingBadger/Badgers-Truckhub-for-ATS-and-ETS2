@@ -27,6 +27,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly UpdateCheckService _updateCheckService;
     private AppSettings _settings;
 
+    // Every display property's last-notified value, keyed by property name - lets
+    // RaiseAllDisplayPropertiesChanged only fire OnPropertyChanged for properties that actually
+    // changed since the last telemetry tick, instead of unconditionally notifying all ~85 of them
+    // 4x/second regardless of whether WPF has anything new to actually redraw. One centralized
+    // comparison (NotifyIfChanged below) rather than a hand-written check per property, so there's
+    // a single place to get right instead of 85 - and it fails open (notifies on any doubt) rather
+    // than risking a property that silently stops updating.
+    private readonly Dictionary<string, object?> _lastNotifiedValues = new();
+
     private TelemetrySnapshot _snapshot = TelemetrySnapshot.Disconnected;
     private bool _autoUnitPicked;
     private bool _updateAcknowledged;
@@ -795,93 +804,117 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         RaiseAllDisplayPropertiesChanged();
     }
 
+    // Only raises OnPropertyChanged for propertyName if its computed value actually differs from
+    // what was last notified - skips the WPF binding re-evaluation (converters, string formatting,
+    // Visibility changes, layout) for anything that hasn't actually changed since the last tick.
+    // Deliberately fails open: any exception from the comparison itself (a type that can't be
+    // compared, for instance) is treated as "changed", so the worst case is an unnecessary notify,
+    // never a property that silently stops updating.
+    private void NotifyIfChanged<T>(string propertyName, T value)
+    {
+        try
+        {
+            if (_lastNotifiedValues.TryGetValue(propertyName, out var last) && Equals(last, value))
+            {
+                return;
+            }
+        }
+        catch
+        {
+            // Fall through and notify.
+        }
+
+        _lastNotifiedValues[propertyName] = value;
+        OnPropertyChanged(propertyName);
+    }
+
     private void RaiseAllDisplayPropertiesChanged()
     {
-        OnPropertyChanged(nameof(UnitLabel));
-        OnPropertyChanged(nameof(DistanceUnitLabel));
-        OnPropertyChanged(nameof(FuelUnitLabel));
-        OnPropertyChanged(nameof(WeightUnitLabel));
-        OnPropertyChanged(nameof(IsConnected));
-        OnPropertyChanged(nameof(StatusMessage));
-        OnPropertyChanged(nameof(ShowJobPanel));
-        OnPropertyChanged(nameof(ShowStatusMessage));
-        OnPropertyChanged(nameof(SpeedLimitValue));
-        OnPropertyChanged(nameof(HasSpeedLimit));
-        OnPropertyChanged(nameof(ShowSpeedPlaceholder));
-        OnPropertyChanged(nameof(ShowAmericanSpeedSign));
-        OnPropertyChanged(nameof(ShowEuropeanSpeedSign));
-        OnPropertyChanged(nameof(SpeedValue));
-        OnPropertyChanged(nameof(CurrencySymbol));
-        OnPropertyChanged(nameof(IncomeDisplay));
-        OnPropertyChanged(nameof(RouteDisplay));
-        OnPropertyChanged(nameof(DistanceTraveledDisplay));
-        OnPropertyChanged(nameof(DistanceTotalDisplay));
-        OnPropertyChanged(nameof(PricePerDistanceDisplay));
-        OnPropertyChanged(nameof(HasCargo));
-        OnPropertyChanged(nameof(CargoDisplay));
-        OnPropertyChanged(nameof(HasFuelEconomy));
-        OnPropertyChanged(nameof(FuelEconomyDisplay));
-        OnPropertyChanged(nameof(FuelEconomyVisibility));
-        OnPropertyChanged(nameof(HasFuelForecast));
-        OnPropertyChanged(nameof(FuelForecastDisplay));
-        OnPropertyChanged(nameof(HasEnoughFuelForTrip));
-        OnPropertyChanged(nameof(TripFuelColor));
-        OnPropertyChanged(nameof(RemainingTimeDisplay));
-        OnPropertyChanged(nameof(GearDisplay));
-        OnPropertyChanged(nameof(RpmDisplay));
-        OnPropertyChanged(nameof(RpmColor));
-        OnPropertyChanged(nameof(RpmGaugeMidLabel));
-        OnPropertyChanged(nameof(RpmGaugeMaxLabel));
-        OnPropertyChanged(nameof(SpeedColor));
-        OnPropertyChanged(nameof(SpeedGaugeMidLabel));
-        OnPropertyChanged(nameof(SpeedGaugeMaxLabel));
-        OnPropertyChanged(nameof(SpeedSectionVisibility));
-        OnPropertyChanged(nameof(SpeedSignVisibility));
-        OnPropertyChanged(nameof(CruiseControlActive));
-        OnPropertyChanged(nameof(CruiseControlDisplay));
-        OnPropertyChanged(nameof(CruiseControlColor));
-        OnPropertyChanged(nameof(CruiseControlVisibility));
-        OnPropertyChanged(nameof(ParkingBrakeActive));
-        OnPropertyChanged(nameof(ParkingBrakeColor));
-        OnPropertyChanged(nameof(ParkingBrakeVisibility));
-        OnPropertyChanged(nameof(TurnSignalLeftColor));
-        OnPropertyChanged(nameof(TurnSignalRightColor));
-        OnPropertyChanged(nameof(SidelightsColor));
-        OnPropertyChanged(nameof(LowBeamColor));
-        OnPropertyChanged(nameof(HighBeamColor));
-        OnPropertyChanged(nameof(BeaconColor));
-        OnPropertyChanged(nameof(DiffLockColor));
-        OnPropertyChanged(nameof(HasLiftAxle));
-        OnPropertyChanged(nameof(LiftAxleColor));
-        OnPropertyChanged(nameof(HasRetarder));
-        OnPropertyChanged(nameof(RetarderColor));
-        OnPropertyChanged(nameof(RetarderDisplayText));
-        OnPropertyChanged(nameof(JakeBrakeLetter));
-        OnPropertyChanged(nameof(JakeBrakeColor));
-        OnPropertyChanged(nameof(GameClockDisplay));
-        OnPropertyChanged(nameof(GameClockVisibility));
-        OnPropertyChanged(nameof(LightsStatusVisibility));
-        OnPropertyChanged(nameof(GearRpmSectionVisibility));
-        OnPropertyChanged(nameof(RouteVisibility));
-        OnPropertyChanged(nameof(CargoVisibility));
-        OnPropertyChanged(nameof(PayoutVisibility));
-        OnPropertyChanged(nameof(DistanceVisibility));
-        OnPropertyChanged(nameof(TimeLeftVisibility));
-        OnPropertyChanged(nameof(FuelSectionVisibility));
-        OnPropertyChanged(nameof(TripFuelForecastVisibility));
-        OnPropertyChanged(nameof(HasAdBlue));
-        OnPropertyChanged(nameof(AdBlueVisibility));
-        OnPropertyChanged(nameof(AirPressureWarnColor));
-        OnPropertyChanged(nameof(ParkingBrakeWarnColor));
-        OnPropertyChanged(nameof(OilPressureWarnColor));
-        OnPropertyChanged(nameof(WaterTempWarnColor));
-        OnPropertyChanged(nameof(FuelWarnColor));
-        OnPropertyChanged(nameof(AdBlueWarnColor));
-        OnPropertyChanged(nameof(BatteryWarnColor));
-        OnPropertyChanged(nameof(WarningsVisibility));
-        OnPropertyChanged(nameof(RestTimeDisplay));
-        OnPropertyChanged(nameof(RestTimeColor));
-        OnPropertyChanged(nameof(RestTimeVisibility));
+        NotifyIfChanged(nameof(UnitLabel), UnitLabel);
+        NotifyIfChanged(nameof(DistanceUnitLabel), DistanceUnitLabel);
+        NotifyIfChanged(nameof(FuelUnitLabel), FuelUnitLabel);
+        NotifyIfChanged(nameof(WeightUnitLabel), WeightUnitLabel);
+        NotifyIfChanged(nameof(IsConnected), IsConnected);
+        NotifyIfChanged(nameof(StatusMessage), StatusMessage);
+        NotifyIfChanged(nameof(ShowJobPanel), ShowJobPanel);
+        NotifyIfChanged(nameof(ShowStatusMessage), ShowStatusMessage);
+        NotifyIfChanged(nameof(SpeedLimitValue), SpeedLimitValue);
+        NotifyIfChanged(nameof(HasSpeedLimit), HasSpeedLimit);
+        NotifyIfChanged(nameof(ShowSpeedPlaceholder), ShowSpeedPlaceholder);
+        NotifyIfChanged(nameof(ShowAmericanSpeedSign), ShowAmericanSpeedSign);
+        NotifyIfChanged(nameof(ShowEuropeanSpeedSign), ShowEuropeanSpeedSign);
+        NotifyIfChanged(nameof(SpeedValue), SpeedValue);
+        NotifyIfChanged(nameof(CurrencySymbol), CurrencySymbol);
+        NotifyIfChanged(nameof(IncomeDisplay), IncomeDisplay);
+        NotifyIfChanged(nameof(RouteDisplay), RouteDisplay);
+        NotifyIfChanged(nameof(DistanceTraveledDisplay), DistanceTraveledDisplay);
+        NotifyIfChanged(nameof(DistanceTotalDisplay), DistanceTotalDisplay);
+        NotifyIfChanged(nameof(PricePerDistanceDisplay), PricePerDistanceDisplay);
+        NotifyIfChanged(nameof(HasCargo), HasCargo);
+        NotifyIfChanged(nameof(CargoDisplay), CargoDisplay);
+        NotifyIfChanged(nameof(HasFuelEconomy), HasFuelEconomy);
+        NotifyIfChanged(nameof(FuelEconomyDisplay), FuelEconomyDisplay);
+        NotifyIfChanged(nameof(FuelEconomyVisibility), FuelEconomyVisibility);
+        NotifyIfChanged(nameof(HasFuelForecast), HasFuelForecast);
+        NotifyIfChanged(nameof(FuelForecastDisplay), FuelForecastDisplay);
+        NotifyIfChanged(nameof(HasEnoughFuelForTrip), HasEnoughFuelForTrip);
+        NotifyIfChanged(nameof(TripFuelColor), TripFuelColor);
+        NotifyIfChanged(nameof(RemainingTimeDisplay), RemainingTimeDisplay);
+        NotifyIfChanged(nameof(GearDisplay), GearDisplay);
+        NotifyIfChanged(nameof(RpmDisplay), RpmDisplay);
+        NotifyIfChanged(nameof(RpmColor), RpmColor);
+        NotifyIfChanged(nameof(RpmGaugeMidLabel), RpmGaugeMidLabel);
+        NotifyIfChanged(nameof(RpmGaugeMaxLabel), RpmGaugeMaxLabel);
+        NotifyIfChanged(nameof(SpeedColor), SpeedColor);
+        NotifyIfChanged(nameof(SpeedGaugeMidLabel), SpeedGaugeMidLabel);
+        NotifyIfChanged(nameof(SpeedGaugeMaxLabel), SpeedGaugeMaxLabel);
+        NotifyIfChanged(nameof(SpeedSectionVisibility), SpeedSectionVisibility);
+        NotifyIfChanged(nameof(SpeedSignVisibility), SpeedSignVisibility);
+        NotifyIfChanged(nameof(CruiseControlActive), CruiseControlActive);
+        NotifyIfChanged(nameof(CruiseControlDisplay), CruiseControlDisplay);
+        NotifyIfChanged(nameof(CruiseControlColor), CruiseControlColor);
+        NotifyIfChanged(nameof(CruiseControlVisibility), CruiseControlVisibility);
+        NotifyIfChanged(nameof(ParkingBrakeActive), ParkingBrakeActive);
+        NotifyIfChanged(nameof(ParkingBrakeColor), ParkingBrakeColor);
+        NotifyIfChanged(nameof(ParkingBrakeVisibility), ParkingBrakeVisibility);
+        NotifyIfChanged(nameof(TurnSignalLeftColor), TurnSignalLeftColor);
+        NotifyIfChanged(nameof(TurnSignalRightColor), TurnSignalRightColor);
+        NotifyIfChanged(nameof(SidelightsColor), SidelightsColor);
+        NotifyIfChanged(nameof(LowBeamColor), LowBeamColor);
+        NotifyIfChanged(nameof(HighBeamColor), HighBeamColor);
+        NotifyIfChanged(nameof(BeaconColor), BeaconColor);
+        NotifyIfChanged(nameof(DiffLockColor), DiffLockColor);
+        NotifyIfChanged(nameof(HasLiftAxle), HasLiftAxle);
+        NotifyIfChanged(nameof(LiftAxleColor), LiftAxleColor);
+        NotifyIfChanged(nameof(HasRetarder), HasRetarder);
+        NotifyIfChanged(nameof(RetarderColor), RetarderColor);
+        NotifyIfChanged(nameof(RetarderDisplayText), RetarderDisplayText);
+        NotifyIfChanged(nameof(JakeBrakeLetter), JakeBrakeLetter);
+        NotifyIfChanged(nameof(JakeBrakeColor), JakeBrakeColor);
+        NotifyIfChanged(nameof(GameClockDisplay), GameClockDisplay);
+        NotifyIfChanged(nameof(GameClockVisibility), GameClockVisibility);
+        NotifyIfChanged(nameof(LightsStatusVisibility), LightsStatusVisibility);
+        NotifyIfChanged(nameof(GearRpmSectionVisibility), GearRpmSectionVisibility);
+        NotifyIfChanged(nameof(RouteVisibility), RouteVisibility);
+        NotifyIfChanged(nameof(CargoVisibility), CargoVisibility);
+        NotifyIfChanged(nameof(PayoutVisibility), PayoutVisibility);
+        NotifyIfChanged(nameof(DistanceVisibility), DistanceVisibility);
+        NotifyIfChanged(nameof(TimeLeftVisibility), TimeLeftVisibility);
+        NotifyIfChanged(nameof(FuelSectionVisibility), FuelSectionVisibility);
+        NotifyIfChanged(nameof(TripFuelForecastVisibility), TripFuelForecastVisibility);
+        NotifyIfChanged(nameof(HasAdBlue), HasAdBlue);
+        NotifyIfChanged(nameof(AdBlueVisibility), AdBlueVisibility);
+        NotifyIfChanged(nameof(AirPressureWarnColor), AirPressureWarnColor);
+        NotifyIfChanged(nameof(ParkingBrakeWarnColor), ParkingBrakeWarnColor);
+        NotifyIfChanged(nameof(OilPressureWarnColor), OilPressureWarnColor);
+        NotifyIfChanged(nameof(WaterTempWarnColor), WaterTempWarnColor);
+        NotifyIfChanged(nameof(FuelWarnColor), FuelWarnColor);
+        NotifyIfChanged(nameof(AdBlueWarnColor), AdBlueWarnColor);
+        NotifyIfChanged(nameof(BatteryWarnColor), BatteryWarnColor);
+        NotifyIfChanged(nameof(WarningsVisibility), WarningsVisibility);
+        NotifyIfChanged(nameof(RestTimeDisplay), RestTimeDisplay);
+        NotifyIfChanged(nameof(RestTimeColor), RestTimeColor);
+        NotifyIfChanged(nameof(RestTimeVisibility), RestTimeVisibility);
     }
 
     // Eases _fuelFractionSmoothed/_adBlueFractionSmoothed toward whatever the telemetry currently

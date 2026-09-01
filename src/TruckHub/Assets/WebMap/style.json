@@ -1,0 +1,164 @@
+{
+  "version": 8,
+  "name": "TruckHub GPS",
+  "sources": {
+    "ats": {
+      "type": "vector",
+      "tiles": ["tiles/{z}/{x}/{y}.pbf"],
+      "minzoom": 4,
+      "maxzoom": 13
+    },
+    "route": {
+      "type": "geojson",
+      "data": { "type": "FeatureCollection", "features": [] }
+    },
+    "road-signs": {
+      "type": "geojson",
+      "data": "mapdata/road-signs.json"
+    },
+    "poi-facilities": {
+      "type": "geojson",
+      "data": "mapdata/poi-facilities.json"
+    },
+    "town-labels": {
+      "type": "geojson",
+      "data": "mapdata/town-labels.json"
+    },
+    "state-labels": {
+      "type": "geojson",
+      "data": "mapdata/state-labels.json"
+    }
+  },
+  "layers": [
+    { "id": "background", "type": "background", "paint": { "background-color": "#12161c" } },
+    {
+      "id": "state-fill",
+      "type": "fill",
+      "source": "ats",
+      "source-layer": "ats",
+      "filter": ["==", ["get", "type"], "country"],
+      "paint": { "fill-color": "#1a2028", "fill-opacity": 1 }
+    },
+    {
+      "id": "state-outline",
+      "type": "line",
+      "source": "ats",
+      "source-layer": "ats",
+      "filter": ["==", ["get", "type"], "country"],
+      "layout": { "line-join": "round" },
+      "paint": {
+        "line-color": "#5b6b80",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.8, 8, 1.4, 13, 2],
+        "line-dasharray": [3, 2]
+      }
+    },
+    {
+      "id": "state-labels",
+      "type": "symbol",
+      "source": "state-labels",
+      "minzoom": 4,
+      "layout": {
+        "icon-image": ["concat", "state-label:", ["get", "name"]],
+        "icon-allow-overlap": true,
+        "symbol-sort-key": -1
+      }
+    },
+    {
+      "id": "map-area",
+      "type": "fill",
+      "source": "ats",
+      "source-layer": "ats",
+      "filter": ["==", ["get", "type"], "mapArea"],
+      "paint": { "fill-color": "#202832", "fill-opacity": 0.6 }
+    },
+    {
+      "id": "roads",
+      "type": "line",
+      "source": "ats",
+      "source-layer": "ats",
+      "filter": [
+        "all",
+        ["==", ["get", "type"], "road"],
+        ["!=", ["get", "hidden"], true],
+        ["!=", ["get", "secret"], true]
+      ],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#c7cdd6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.4, 8, 1, 13, 2.6]
+      }
+    },
+    {
+      "id": "ferries",
+      "type": "line",
+      "source": "ats",
+      "source-layer": "ats",
+      "filter": ["in", ["get", "type"], ["literal", ["ferry", "train"]]],
+      "paint": { "line-color": "#4C9AFF", "line-width": 1, "line-dasharray": [2, 2] }
+    },
+    {
+      "id": "town-labels",
+      "type": "symbol",
+      "source": "town-labels",
+      "minzoom": 5,
+      "layout": {
+        "icon-image": ["concat", "town-label:", ["get", "name"]],
+        "icon-anchor": "left",
+        "icon-offset": [2, 0],
+        "icon-allow-overlap": false,
+        "symbol-sort-key": 15
+      }
+    },
+    {
+      "id": "city-labels",
+      "type": "symbol",
+      "source": "ats",
+      "source-layer": "ats",
+      "minzoom": 4,
+      "filter": ["==", ["get", "type"], "city"],
+      "layout": {
+        "icon-image": ["concat", "city-label:", ["get", "name"], ":", ["get", "scaleRank"]],
+        "icon-anchor": "left",
+        "icon-offset": [2, 0],
+        "icon-allow-overlap": false,
+        "symbol-sort-key": ["get", "scaleRank"]
+      }
+    },
+    {
+      "id": "poi-facility",
+      "type": "symbol",
+      "source": "poi-facilities",
+      "minzoom": 7,
+      "layout": {
+        "icon-image": [
+          "match", ["get", "category"],
+          "fuel", "poi-fuel",
+          "weighStation", "poi-weigh",
+          "restStop", "poi-rest",
+          "service", "poi-service",
+          "poi-fuel"
+        ],
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 7, 0.6, 13, 1],
+        "icon-allow-overlap": false
+      }
+    },
+    {
+      "id": "road-signs",
+      "type": "symbol",
+      "source": "road-signs",
+      "minzoom": 7,
+      "layout": {
+        "icon-image": ["concat", "road-sign:", ["get", "shieldType"], ":", ["get", "number"]],
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 7, 0.7, 13, 1],
+        "icon-allow-overlap": false
+      }
+    },
+    {
+      "id": "route-line",
+      "type": "line",
+      "source": "route",
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#5FD85F", "line-width": 4, "line-opacity": 0.85 }
+    }
+  ]
+}

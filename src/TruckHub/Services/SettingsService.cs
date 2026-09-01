@@ -13,7 +13,7 @@ public sealed class SettingsService
     {
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "TruckHub");
+            "TruckHub-Dev");
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "settings.json");
     }

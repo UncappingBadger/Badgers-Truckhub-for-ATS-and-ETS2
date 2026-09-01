@@ -10,9 +10,9 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>TruckHub</AssemblyName>
     <RootNamespace>TruckHub</RootNamespace>
-    <Version>1.2.0</Version>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <Version>2.0.0</Version>
 
     <!-- Publish settings: one self-contained exe, no separate .NET install required -->
     <SelfContained>true</SelfContained>
@@ -28,6 +28,40 @@
     <EmbeddedResource Include="Assets\plugin\scs-telemetry.dll">
       <LogicalName>TruckHub.scs-telemetry.dll</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- GPS map: the bundled web page (HTML/JS/CSS/vendored MapLibre) as individually embedded
+         loose files - small in number, easy to keep editing during dev. Extracted to disk once on
+         first use by WebMapAssetExtractor - see its own comment for why a folder of loose files at
+         publish time isn't reliable inside a self-contained single-file exe. LogicalName keeps the
+         relative path (mixed \/ separators from %(RecursiveDir) are fine - WebMapAssetExtractor
+         normalizes them, nothing else ever parses these names). -->
+    <None Remove="Assets\WebMap\**" />
+    <EmbeddedResource Include="Assets\WebMap\**" Exclude="Assets\WebMap\tiles.zip">
+      <LogicalName>TruckHub.WebMap/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+
+    <!-- The pre-generated vector tiles (91,859 small .pbf files - see Assets\WebMap\GENERATION.md)
+         are zipped into one archive instead of embedded individually: that many separate manifest
+         resources would bloat the assembly and slow every build. Extracted the same way ZoidHub
+         extracts its own (much larger) bundled payload. -->
+    <EmbeddedResource Include="Assets\WebMap\tiles.zip">
+      <LogicalName>TruckHub.WebMap.tiles.zip</LogicalName>
+    </EmbeddedResource>
+
+    <!-- Routable road-network graph (see Assets\RouteGraph\GENERATION.md) - built directly from
+         truckermudgeon/maps' parser output, not from any GPL code. Only extracted/loaded when a
+         route is actually needed (an active job with a known destination), separate from the
+         always-needed WebMap page assets - see RoutingGraph.cs. -->
+    <None Remove="Assets\RouteGraph\route-graph.zip" />
+    <EmbeddedResource Include="Assets\RouteGraph\route-graph.zip">
+      <LogicalName>TruckHub.RouteGraph.route-graph.zip</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
 </Project>

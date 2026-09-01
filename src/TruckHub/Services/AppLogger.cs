@@ -16,7 +16,7 @@ public static class AppLogger
     {
         var dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "TruckHub", "logs");
+            "TruckHub-Dev", "logs");
         Directory.CreateDirectory(dir);
         LogPath = Path.Combine(dir, "truckhub.log");
     }

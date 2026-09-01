@@ -64,10 +64,24 @@ public sealed class TelemetrySnapshot
     public uint PlannedDistanceKm { get; init; }
     public float NavigationDistanceMeters { get; init; }
 
+    /// <summary>Truck's world-space position (X/Z form the horizontal ground plane; Y, altitude,
+    /// isn't tracked - not needed for a 2D map). Used by the GPS map's coordinate transform.</summary>
+    public double PositionX { get; init; }
+    public double PositionZ { get; init; }
+
+    /// <summary>Raw SDK heading, unit range [0,1)=[0,360), 0=north, counterclockwise.</summary>
+    public float HeadingUnit { get; init; }
+
     public string CitySource { get; init; } = "";
     public string CityDestination { get; init; } = "";
     public string CompanySource { get; init; } = "";
     public string CompanyDestination { get; init; } = "";
+
+    /// <summary>Raw internal tokens (not the localized display names above) - e.g. "topeka",
+    /// "flv_food_str". Used by the GPS map's routing to look up the exact destination node,
+    /// matching the same token format the route graph's company table already uses.</summary>
+    public string CityDestinationId { get; init; } = "";
+    public string CompanyDestinationId { get; init; } = "";
 
     public string CargoName { get; init; } = "";
     public float CargoMassKg { get; init; }

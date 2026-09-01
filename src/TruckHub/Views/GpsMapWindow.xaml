@@ -1,0 +1,65 @@
+<Window x:Class="TruckHub.Views.GpsMapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="TruckHub - GPS"
+        Width="900" Height="650"
+        MinWidth="360" MinHeight="280"
+        ResizeMode="CanResize"
+        WindowStyle="None"
+        Background="#161616"
+        Topmost="True">
+
+    <!-- Same WindowChrome pattern as LogWindow - see its own comment for why. -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Background="#202020" Height="28" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="TRUCKHUB · GPS" Foreground="#888888" FontSize="11"
+                       FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="⟲" Click="ResetSize_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Width="28" Height="28" FontSize="12" Background="Transparent"
+                        Foreground="White" BorderThickness="0" ToolTip="Reset to default size" />
+                <Button Content="─" Click="Minimize_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Width="28" Height="28" FontSize="10" Background="Transparent"
+                        Foreground="White" BorderThickness="0" ToolTip="Minimize" />
+                <Button Content="▢" Click="Maximize_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Width="28" Height="28" FontSize="10" Background="Transparent"
+                        Foreground="White" BorderThickness="0" ToolTip="Maximize" />
+                <Button Content="✕" Click="Close_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        Width="28" Height="28" FontSize="10" Background="Transparent"
+                        Foreground="White" BorderThickness="0" ToolTip="Close" />
+            </StackPanel>
+        </Grid>
+
+        <!-- CoreWebView2 setup happens lazily in code-behind's Loaded handler, not here - the whole
+             point is that this control (and its WebView2 subprocess) doesn't exist at all until the
+             user actually opens this window. -->
+        <wv2:WebView2 Grid.Row="1" x:Name="MapWebView" />
+
+        <!-- Covers the WebView2 area until the page reports its map is actually rendered (see
+             gpsmap.js's "mapReady" message / OnWebMessageReceived) - spinning up WebView2's own
+             Chromium engine and WebGL context takes a real, visible moment the first time a window
+             opens, independent of anything TruckHub itself does. Making that wait obvious beats
+             leaving a blank pane that reads as broken. -->
+        <Border Grid.Row="1" x:Name="LoadingOverlay" Background="#161616">
+            <TextBlock Text="Loading map…" Foreground="#888888" FontSize="13"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+    </Grid>
+</Window>

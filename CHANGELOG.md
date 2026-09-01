@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.0.0 - 2026-09-01
+
+### Added
+- **Live GPS map** - a real, road-following map showing your truck's live position over actual ATS roads, cities, and state boundaries, with a route line to your active job's destination (or a manually-dropped pin) that automatically reroutes if you drift off-path. Includes real highway shields, road color-coding (interstate vs. state route vs. local), state borders/labels, and city/town labels all the way down to the small towns you pass through.
+- **LAN Mode** - toggle it from the GPS window to view your live position and route from any browser on your local network (phone, tablet, second PC). Keeps running even if you close the main GPS window.
+- **GPS window controls** - minimize, maximize, reset-to-default-size, and fullscreen.
+- **Gearbox calibration hotkey (Ctrl+Alt+G)** - recapture your shifter's gear positions on the fly without reopening Settings, for both standard and splitter/range shifters.
+- **GPS / LOG launcher tabs** - the small map-icon button is gone; opening the GPS map or job log is now a pair of docked tabs on the main window.
+
+### Changed
+- Substantial performance work for the GPS map: CPU-aware core management now also covers the map's own browser subprocesses (not just TruckHub itself), a dynamic 30/60fps cap responds to real system load, and the map's browser engine now pre-warms quietly in the background at app startup instead of costing you a slow first open.
+
+### Fixed
+- Fuel station markers no longer appear at AI-traffic-only locations that don't have a real, truck-usable station in-game.
+- A handful of non-canonical "secret" construction roads no longer render as if they were real, driveable roads.
+
 ## v1.2 - 2026-08-17
 
 ### Added

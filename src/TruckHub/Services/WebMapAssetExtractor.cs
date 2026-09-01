@@ -1,0 +1,106 @@
+using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace TruckHub.Services;
+
+/// <summary>
+/// Extracts the GPS map's bundled web assets (HTML/JS/CSS/vendored MapLibre + pre-generated vector
+/// tiles - see TruckHub.csproj's Assets\WebMap embed) to a real folder on disk once, so WebView2's
+/// SetVirtualHostNameToFolderMapping has an actual directory to serve from. WebView2 can't serve
+/// pages directly out of embedded resources or a single-file exe's own bundle, so this is the
+/// simplest reliable option - matches the same "extract embedded payload to %LocalAppData% on first
+/// use" approach ZoidHub already uses for its own bundled web map.
+///
+/// An on-demand alternative (reading tiles straight out of the still-zipped archive instead of
+/// extracting all 91,859 of them up front) was tried to avoid the first-open extraction delay, but
+/// every way of serving that data back to the page - WebResourceRequested interception, a custom
+/// MapLibre protocol backed by fetch(), even a postMessage bridge - hit the same wall: fetch() (and,
+/// apparently, whatever WebView2 does internally for a vector tile source's own requests) against a
+/// SetVirtualHostNameToFolderMapping origin just doesn't work reliably for this content, for reasons
+/// that didn't resolve after real effort. Plain disk-extracted files served by WebView2's own default
+/// virtual-host handler is the one thing that's actually held up, so that's what this does - the
+/// one-time extraction delay is a real, felt cost, but a known and now UI-documented one (see
+/// GpsMapWindow's loading overlay) rather than a broken feature.
+/// </summary>
+public static class WebMapAssetExtractor
+{
+    private const string ResourcePrefix = "TruckHub.WebMap/";
+    private const string TilesZipResourceName = "TruckHub.WebMap.tiles.zip";
+
+    /// <summary>Extracts (or re-extracts, if the embedded content has changed since last time) the
+    /// web assets and returns the folder they now live in.</summary>
+    public static string EnsureExtracted()
+    {
+        var targetDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TruckHub-Dev", "WebMap");
+
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceNames = assembly.GetManifestResourceNames();
+
+        // Cheap "did anything change" check: name + byte length per resource, hashed together.
+        // Resource *count* alone isn't enough - editing an existing file (e.g. adding a button to
+        // index.html) doesn't add or remove a resource, so a plain count comparison missed it and
+        // kept serving the stale extracted copy. Length only reads embedded-resource stream
+        // metadata, not the actual bytes, so this stays cheap even with tiles.zip in the mix.
+        var versionMarkerPath = Path.Combine(targetDir, ".extracted-version");
+        var currentVersion = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", resourceNames.OrderBy(n => n, StringComparer.Ordinal).Select(n =>
+            {
+                using var s = assembly.GetManifestResourceStream(n);
+                return $"{n}:{s!.Length}";
+            })))));
+        if (File.Exists(versionMarkerPath) && File.ReadAllText(versionMarkerPath) == currentVersion)
+        {
+            return targetDir;
+        }
+
+        if (Directory.Exists(targetDir))
+        {
+            Directory.Delete(targetDir, recursive: true);
+        }
+
+        Directory.CreateDirectory(targetDir);
+
+        foreach (var resourceName in resourceNames)
+        {
+            if (!resourceName.StartsWith(ResourcePrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var relativePath = resourceName[ResourcePrefix.Length..]
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+            var outputPath = Path.Combine(targetDir, relativePath);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+
+            using var resourceStream = assembly.GetManifestResourceStream(resourceName)!;
+            using var fileStream = File.Create(outputPath);
+            resourceStream.CopyTo(fileStream);
+        }
+
+        // The vector tiles are bundled separately as a single zip (see TruckHub.csproj) rather than
+        // ~92,000 individual manifest resources - unpack it into the same tiles\ folder the map
+        // style's tile URLs expect (https://truckhub.app/tiles/{z}/{x}/{y}.pbf).
+        using (var tilesZipStream = assembly.GetManifestResourceStream(TilesZipResourceName))
+        {
+            if (tilesZipStream != null)
+            {
+                var tilesDir = Path.Combine(targetDir, "tiles");
+                Directory.CreateDirectory(tilesDir);
+                using var archive = new ZipArchive(tilesZipStream, ZipArchiveMode.Read);
+                archive.ExtractToDirectory(tilesDir);
+            }
+        }
+
+        File.WriteAllText(versionMarkerPath, currentVersion);
+        return targetDir;
+    }
+}

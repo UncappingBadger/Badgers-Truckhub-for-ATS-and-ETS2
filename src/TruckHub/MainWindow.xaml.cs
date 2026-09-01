@@ -48,6 +48,8 @@ public partial class MainWindow : Window
     private enum LogPanelState { Closed, Docked, PoppedOut }
     private LogPanelState _logState = LogPanelState.Closed;
     private Views.LogWindow? _logWindow;
+    private Views.GpsMapWindow? _gpsMapWindow;
+    private readonly GpsCoordinator _gpsCoordinator;
 
     public MainWindow()
     {
@@ -64,6 +66,11 @@ public partial class MainWindow : Window
         Height = Math.Clamp(settings.WindowHeight, MinHeight, 900);
 
         _telemetryService = new TelemetryService();
+        _gpsCoordinator = new GpsCoordinator(_telemetryService);
+        // Kicked off unconditionally at startup, not just for users who've used GPS before - see
+        // GpsCoordinator's own comment for the "why" (a deliberate trade of a little idle
+        // background cost for a much faster first GPS-window open).
+        _gpsCoordinator.Prewarm();
         _gearCaptureService = new GearCaptureService();
         _updateCheckService = new UpdateCheckService();
         _viewModel = new MainViewModel(_settingsService, _telemetryService, _updateCheckService);
@@ -91,6 +98,11 @@ public partial class MainWindow : Window
 
             // A popped-out log is its own window - don't leave it orphaned once the main app closes.
             _logWindow?.Close();
+            _gpsMapWindow?.Close();
+            // GpsMapWindow closing above only releases the coordinator's own "window is open" flag
+            // - LAN Mode (if active) is deliberately designed to survive that. The whole app exiting
+            // is the actual point everything really has to stop.
+            _gpsCoordinator.Shutdown();
 
             if (_hwndSource != null)
             {
@@ -224,7 +236,6 @@ public partial class MainWindow : Window
     private void SetDockedOpen(bool open)
     {
         _logState = open ? LogPanelState.Docked : LogPanelState.Closed;
-        LogToggleButton.Content = open ? "‹" : "›";
 
         // LogDrawerBorder now lives inside the same Viewbox as the card, so it scales along with it
         // while docked - a card zoomed in 2x needs the window to grow by 2x as many actual pixels to
@@ -257,7 +268,7 @@ public partial class MainWindow : Window
         // edge - the popup opened off-screen and could only be found by dragging the main window
         // back toward the middle first). Flip to the left of the main window if the right doesn't
         // fit, then clamp to the current monitor's working area either way as a final safety net.
-        var (popupLeft, popupTop) = ComputePopupPosition();
+        var (popupLeft, popupTop) = ComputePopupPosition(LogWindowInitialWidth, LogWindowInitialHeight);
         SetDockedOpen(false);
 
         _logWindow = new Views.LogWindow(_viewModel, popupLeft, popupTop);
@@ -265,15 +276,30 @@ public partial class MainWindow : Window
         {
             _logWindow = null;
             _logState = LogPanelState.Closed;
-            LogToggleButton.Content = "›";
         };
         _logWindow.Show();
 
         _logState = LogPanelState.PoppedOut;
-        LogToggleButton.Content = "‹";
     }
 
-    private (double left, double top) ComputePopupPosition()
+    private const double GpsMapWindowInitialWidth = 900;
+    private const double GpsMapWindowInitialHeight = 650;
+
+    private void GpsMap_Click(object sender, RoutedEventArgs e)
+    {
+        if (_gpsMapWindow != null)
+        {
+            _gpsMapWindow.Activate();
+            return;
+        }
+
+        var (left, top) = ComputePopupPosition(GpsMapWindowInitialWidth, GpsMapWindowInitialHeight);
+        _gpsMapWindow = new Views.GpsMapWindow(_gpsCoordinator, left, top);
+        _gpsMapWindow.Closed += (_, _) => _gpsMapWindow = null;
+        _gpsMapWindow.Show();
+    }
+
+    private (double left, double top) ComputePopupPosition(double popupWidth, double popupHeight)
     {
         var handle = new WindowInteropHelper(this).Handle;
         var workingArea = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
@@ -288,12 +314,12 @@ public partial class MainWindow : Window
         var screenBottom = workingArea.Bottom * transform.M22;
 
         var preferredLeft = Left + Width + 12;
-        var left = preferredLeft + LogWindowInitialWidth <= screenRight
+        var left = preferredLeft + popupWidth <= screenRight
             ? preferredLeft
-            : Left - LogWindowInitialWidth - 12;
+            : Left - popupWidth - 12;
 
-        left = Math.Clamp(left, screenLeft, Math.Max(screenLeft, screenRight - LogWindowInitialWidth));
-        var top = Math.Clamp(Top, screenTop, Math.Max(screenTop, screenBottom - LogWindowInitialHeight));
+        left = Math.Clamp(left, screenLeft, Math.Max(screenLeft, screenRight - popupWidth));
+        var top = Math.Clamp(Top, screenTop, Math.Max(screenTop, screenBottom - popupHeight));
         return (left, top);
     }
 

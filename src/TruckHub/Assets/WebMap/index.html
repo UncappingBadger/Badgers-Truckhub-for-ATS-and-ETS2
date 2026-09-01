@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>TruckHub GPS</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css" />
+<style>
+  html, body, #map { margin: 0; padding: 0; height: 100%; width: 100%; background: #161616; }
+  .maplibregl-ctrl-attrib { font-size: 10px; }
+
+  #hud-buttons {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    display: flex;
+    gap: 6px;
+    z-index: 5;
+    font-family: system-ui, sans-serif;
+  }
+  #hud-buttons button {
+    background: rgba(22,22,22,0.85);
+    color: #ccc;
+    border: 1px solid #404040;
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #hud-buttons button:hover { background: rgba(40,40,40,0.9); }
+  #hud-buttons button.active {
+    background: #FFC24C;
+    color: #161616;
+    border-color: #FFC24C;
+  }
+
+  #lan-status {
+    position: absolute;
+    left: 10px;
+    bottom: 44px;
+    z-index: 5;
+    font-family: system-ui, sans-serif;
+    font-size: 12px;
+    background: rgba(22,22,22,0.9);
+    color: #ccc;
+    border: 1px solid #404040;
+    border-radius: 5px;
+    padding: 6px 10px;
+    display: none;
+    user-select: text;
+  }
+  #lan-status.visible { display: block; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="lan-status"></div>
+<div id="hud-buttons">
+  <button id="follow-btn" type="button">Follow</button>
+  <button id="pin-btn" type="button">Pin</button>
+  <button id="clear-pin-btn" type="button">Clear</button>
+  <button id="lan-btn" type="button">LAN</button>
+</div>
+<script type="module" src="gpsmap.js"></script>
+</body>
+</html>

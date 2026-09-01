@@ -1,0 +1,610 @@
+function reportToHost(level, message) {
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.postMessage({ type: 'jsLog', level, message: String(message) });
+  }
+}
+
+window.addEventListener('error', e => reportToHost('error', `${e.message} @ ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', e => reportToHost('error', `unhandled rejection: ${e.reason}`));
+
+// Caps the map's render rate by throttling requestAnimationFrame itself, deferring (not dropping)
+// callbacks that arrive sooner than the target interval allows - MapLibre's own render loop, like
+// any WebGL app, schedules its next repaint via rAF, which otherwise just tracks the display's own
+// refresh rate (60Hz, 144Hz, whatever the monitor does) with no cap of its own. Has to be patched
+// here, before MapLibre's own module import resolves below, not after - if MapLibre caches its own
+// reference to window.requestAnimationFrame at module load (a common perf pattern), patching it
+// later would silently do nothing. window.__setMapFps lets the rest of this file (and a message
+// from the C# side, see below) change the target after the fact - starts at 30 by default, GpsCoordinator
+// can push it up to 60 if CoreBalancer sees real system headroom. Remote LAN viewers never get that
+// push (no bridge to receive it over), so they stay at the conservative default - a reasonable
+// choice for an unknown device's own battery/thermals anyway.
+window.__mapTargetFps = 30;
+(function throttleRequestAnimationFrame() {
+  const nativeRAF = window.requestAnimationFrame.bind(window);
+  let lastFrameTime = 0;
+  window.requestAnimationFrame = function (callback) {
+    return nativeRAF(function (now) {
+      const minInterval = 1000 / window.__mapTargetFps;
+      if (now - lastFrameTime >= minInterval) {
+        lastFrameTime = now;
+        callback(now);
+      } else {
+        window.requestAnimationFrame(callback);
+      }
+    });
+  };
+})();
+
+import('./vendor/maplibre-gl.mjs')
+  .then(async maplibregl => {
+    const { Map, Marker, NavigationControl } = maplibregl;
+    reportToHost('info', 'maplibre module loaded');
+
+    // The vector tile source's URL can't just be a plain relative path in style.json (like the
+    // geojson sources below use) or a hardcoded "https://truckhub.app/..." one - MapLibre resolves
+    // tile URLs in a different context than the page itself (its own tile-loading worker, going by
+    // the error), where relative resolution against the page's own location silently fails
+    // ("Failed to fetch (0): tiles/7/27/47.pbf" - the literal unresolved relative string, not even
+    // a malformed absolute URL), and a hardcoded WebView2-only hostname obviously doesn't exist for
+    // a real browser loading this same page remotely over LAN Mode. Fetching style.json ourselves
+    // and rewriting the tiles URL to window.location.origin - the one thing that's always correct
+    // in both contexts (the WebView2 virtual host locally, this device's real address remotely) -
+    // sidesteps the whole question instead of hoping either kind of path resolves right.
+    const style = await fetch('style.json').then(r => r.json());
+    style.sources.ats.tiles = [`${window.location.origin}/tiles/{z}/{x}/{y}.pbf`];
+
+    // Road color/width by class (freeway/arterial/local) - a road feature's own `lookToken`
+    // property (already present in the tiles) maps to a class via road-classes.json
+    // (extract-map-features.ts, same freeway/motorway vs expressway/dividedRoad vs
+    // slowRoad/localRoad classification already used for the routing graph's time-based edge
+    // weights - real road hierarchy, not a guess). Built as a MapLibre `match` expression here
+    // rather than baked into the tiles themselves, same reasoning as the tiles-URL patch above:
+    // one place to generate style.json's dynamic bits, from data that's cheap to ship as its own
+    // small file.
+    const roadClasses = await fetch('mapdata/road-classes.json').then(r => r.json());
+    const ROAD_CLASS_COLOR = { freeway: '#FFB454', arterial: '#7FA8D9', local: '#c7cdd6' };
+    const ROAD_CLASS_WIDTH = { freeway: [0.7, 1.8, 4.2], arterial: [0.55, 1.3, 3.2], local: [0.4, 1, 2.6] };
+    function buildRoadClassExpression(valueForClass) {
+      const expr = ['match', ['get', 'lookToken']];
+      for (const [token, cls] of Object.entries(roadClasses)) {
+        expr.push(token, valueForClass(cls));
+      }
+      expr.push(valueForClass('local'));
+      return expr;
+    }
+    const roadsLayer = style.layers.find(l => l.id === 'roads');
+    if (roadsLayer) {
+      roadsLayer.paint['line-color'] = buildRoadClassExpression(cls => ROAD_CLASS_COLOR[cls] ?? ROAD_CLASS_COLOR.local);
+      roadsLayer.paint['line-width'] = [
+        'interpolate', ['linear'], ['zoom'],
+        4, buildRoadClassExpression(cls => (ROAD_CLASS_WIDTH[cls] ?? ROAD_CLASS_WIDTH.local)[0]),
+        8, buildRoadClassExpression(cls => (ROAD_CLASS_WIDTH[cls] ?? ROAD_CLASS_WIDTH.local)[1]),
+        13, buildRoadClassExpression(cls => (ROAD_CLASS_WIDTH[cls] ?? ROAD_CLASS_WIDTH.local)[2]),
+      ];
+    }
+
+    let follow = false;
+    let pinModeActive = false;
+    let marker = null;
+    let pinMarker = null;
+    let lastPos = null;
+
+    // This same page is served two ways: locally inside WebView2 (window.chrome.webview exists,
+    // real bidirectional postMessage bridge to GpsMapWindow), and remotely to a plain browser on
+    // the LAN via GpsLanServer (no such bridge - just a static file server). Remote view is
+    // deliberately read-only, same reasoning as ZoidHub's own LAN Mode: editing (placing/clearing a
+    // pin, toggling LAN Mode itself) only ever happens from the PC's own WebView2 instance, never
+    // from a device anyone on the WiFi could be holding.
+    const isRemote = !(window.chrome && window.chrome.webview);
+
+    const followBtn = document.getElementById('follow-btn');
+    const pinBtn = document.getElementById('pin-btn');
+    const clearPinBtn = document.getElementById('clear-pin-btn');
+    const lanBtn = document.getElementById('lan-btn');
+    const lanStatus = document.getElementById('lan-status');
+
+    if (isRemote) {
+      pinBtn.style.display = 'none';
+      clearPinBtn.style.display = 'none';
+      lanBtn.style.display = 'none';
+    }
+
+    followBtn.addEventListener('click', () => {
+      follow = !follow;
+      followBtn.classList.toggle('active', follow);
+      if (follow && lastPos) {
+        map.easeTo({ center: [lastPos.lon, lastPos.lat], duration: 400 });
+      }
+    });
+
+    pinBtn.addEventListener('click', () => {
+      pinModeActive = true;
+      pinBtn.classList.add('active');
+      map.getCanvas().style.cursor = 'crosshair';
+    });
+
+    // Removes the placed pin and asks the C# side to fall back to whatever route it would show
+    // without a manual override - the current job's route if one's active, or nothing at all.
+    clearPinBtn.addEventListener('click', () => {
+      if (pinMarker) {
+        pinMarker.remove();
+        pinMarker = null;
+      }
+      setRoute([]);
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'clearPin' });
+      }
+    });
+
+    lanBtn.addEventListener('click', () => {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'toggleLan' });
+      }
+    });
+
+    const map = new Map({
+      container: 'map',
+      style,
+      center: [-96, 39],
+      zoom: 4.2,
+      attributionControl: false,
+      // This map is almost entirely thin lines (roads, state borders) - exactly the content
+      // antialiasing (WebGL's default MSAA-style edge smoothing) costs the most GPU work on, for
+      // a screen full of long straight/gently-curved segments where the jaggies it's smoothing
+      // are barely noticeable at map zoom levels anyway. Off by default in most WebGL contexts
+      // already, but MapLibre requests it explicitly - turning it back off here trades a small,
+      // hard-to-notice amount of edge crispness for real GPU savings, on top of the pixelRatio
+      // scaling below.
+      antialias: false,
+    });
+
+    // WebGL rendering cost scales with actual rendered pixel count (CSS area * pixelRatio^2), not
+    // window state - going fullscreen/maximized doesn't just make the map look bigger, it makes
+    // MapLibre render several times as many pixels every frame (more tiles visible too), which was
+    // confirmed live as the actual cause of "GPS window fullscreen makes the whole app sluggish"
+    // (not driving/route updates - those were already fixed, and this window's normal size was
+    // already confirmed fine). Keep full native sharpness at/near the normal windowed size, and
+    // only scale rendering resolution down once the window grows meaningfully beyond that, so the
+    // rendered pixel count stays roughly capped instead of ballooning linearly with window area.
+    const BASELINE_CSS_PIXELS = 900 * 650;
+    function adjustPixelRatio() {
+      const cssPixels = window.innerWidth * window.innerHeight;
+      const nativeRatio = window.devicePixelRatio || 1;
+      if (cssPixels <= BASELINE_CSS_PIXELS * 1.3) {
+        map.setPixelRatio(nativeRatio);
+        return;
+      }
+      // Confirmed live across three data points: 0.75 read fine but wasn't enough of a performance
+      // cut; 0.6 was *still* confirmed unreadable, not just 0.4 - this map's thin road lines and
+      // small canvas-drawn labels turn to mush well before the resolution drops as far as the sqrt
+      // area-matching formula wants to take it, especially at 4K-class sizes. Backed off hard to
+      // 0.85 - readability takes priority, and the real performance work now lives elsewhere
+      // (antialias off above, requestAnimationFrame capped to window.__mapTargetFps below, and
+      // CoreBalancer keeping this map's own renderer/GPU processes off the busiest cores) rather
+      // than leaning on blurring the whole picture.
+      const scale = Math.sqrt(BASELINE_CSS_PIXELS / cssPixels);
+      map.setPixelRatio(Math.max(0.85, Math.min(nativeRatio, nativeRatio * scale)));
+    }
+    adjustPixelRatio();
+    window.addEventListener('resize', adjustPixelRatio);
+
+    // Small canvas-drawn label/icon bitmaps registered via map.addImage() - MapLibre's own
+    // text-field system needs real glyph PBF tiles (a separate font-rasterization pipeline this
+    // build doesn't have; style.json originally had "glyphs": null, which is invalid and was
+    // removed entirely, so there was never any text-rendering capability here at all). Drawing
+    // labels as plain 2D canvas images with the browser's own font rendering sidesteps that
+    // completely. Facility icons are a small known set (registered once, below, on map load);
+    // city names and road-sign numbers are effectively unbounded strings, so those are drawn
+    // lazily via 'styleimagemissing' the first time each one is actually needed - MapLibre caches
+    // added images by id afterward, so each unique label only gets drawn once no matter how many
+    // features on screen share it.
+    function drawBadge(text, diameter, bgColor, textColor) {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = diameter * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      ctx.arc(diameter / 2, diameter / 2, diameter / 2 - 1, 0, Math.PI * 2);
+      ctx.fillStyle = bgColor;
+      ctx.fill();
+      ctx.strokeStyle = '#12161c';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.fillStyle = textColor;
+      ctx.font = `bold ${Math.round(diameter * 0.5)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, diameter / 2, diameter / 2 + 0.5);
+      // map.addImage() doesn't accept a raw canvas - ImageData, ImageBitmap, HTMLImageElement, or
+      // a {width,height,data} object only.
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    // Real MUTCD route-sign shapes (Interstate M1-1, US Route M1-4, State Route M1-5) - these are
+    // US federal/state highway-standard designs, government works with no copyright, so the actual
+    // shapes/colors are replicated directly rather than the earlier v1's generic
+    // same-shape-different-border-color badges (which didn't read as "real highway shields" at
+    // all).
+    function drawShield(number, shieldType) {
+      const scale = 2;
+      const fontSize = 12;
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const width = Math.max(24, measureCtx.measureText(number).width + 12);
+      const height = shieldType === 'interstate' ? width * 0.92 : shieldType === 'usRoute' ? width * 0.88 : width;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      const w = width, h = height;
+
+      ctx.beginPath();
+      if (shieldType === 'interstate') {
+        // Classic shield silhouette: flat-ish top, bulging sides, pointed bottom.
+        ctx.moveTo(w * 0.1, 0);
+        ctx.lineTo(w * 0.9, 0);
+        ctx.quadraticCurveTo(w, 0, w, h * 0.15);
+        ctx.quadraticCurveTo(w, h * 0.55, w * 0.5, h);
+        ctx.quadraticCurveTo(0, h * 0.55, 0, h * 0.15);
+        ctx.quadraticCurveTo(0, 0, w * 0.1, 0);
+      } else if (shieldType === 'usRoute') {
+        // Cutout shield: notched top corners, rounded bottom corners, flat bottom.
+        ctx.moveTo(w * 0.15, 0);
+        ctx.lineTo(w * 0.85, 0);
+        ctx.lineTo(w, h * 0.25);
+        ctx.lineTo(w, h * 0.82);
+        ctx.quadraticCurveTo(w, h, w * 0.82, h);
+        ctx.lineTo(w * 0.18, h);
+        ctx.quadraticCurveTo(0, h, 0, h * 0.82);
+        ctx.lineTo(0, h * 0.25);
+      } else {
+        // State route: plain circle, the common generic default most states without a bespoke
+        // marker shape use.
+        ctx.arc(w / 2, h / 2, Math.min(w, h) / 2 - 0.8, 0, Math.PI * 2);
+      }
+      ctx.closePath();
+
+      const fill = shieldType === 'interstate' ? '#1e3f8f' : '#ffffff';
+      const border = shieldType === 'interstate' ? '#ffffff' : '#12161c';
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = border;
+      ctx.lineWidth = shieldType === 'interstate' ? 1.1 : 1.5;
+      ctx.stroke();
+
+      if (shieldType === 'interstate') {
+        // Red band across the upper third - the top edge is flat/near-full-width there, so a
+        // plain rect reads correctly without needing to clip to the shield's own curve.
+        ctx.fillStyle = '#b0202a';
+        ctx.fillRect(w * 0.08, h * 0.1, w * 0.84, h * 0.22);
+      }
+
+      ctx.fillStyle = shieldType === 'interstate' ? '#ffffff' : '#12161c';
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const textY = shieldType === 'interstate' ? h * 0.62 : h / 2 + 0.5;
+      ctx.fillText(number, w / 2, textY);
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    function drawCityLabel(name, scaleRank) {
+      const scale = 2;
+      const fontSize = Math.max(9, Math.round(16 - scaleRank * 1.1));
+      const fontWeight = scaleRank <= 2 ? '700' : scaleRank <= 6 ? '600' : '500';
+      // Major cities render brighter/bolder than small towns - the size difference alone reads
+      // weakly at a glance, color contrast makes the hierarchy obvious immediately.
+      const color = scaleRank <= 2 ? '#f5f7fa' : scaleRank <= 6 ? '#d5dae2' : '#9aa4b2';
+      // A separate, very small "cities" circle layer used to mark the actual position - too
+      // faint/small against the road-heavy map to read as a marker at all, just looked like
+      // floating text with nothing anchoring it. Baking a solid dot into the same bitmap as the
+      // text (drawn once, together) fixes that - the marker and label are now visually one unit,
+      // and the dot sits almost exactly on the feature's real point (style.json's icon-offset was
+      // dropped to [2, 0] to match).
+      const dotRadius = Math.max(2, Math.round(4.2 - scaleRank * 0.24));
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = `${fontWeight} ${fontSize}px system-ui, sans-serif`;
+      const dotGap = dotRadius * 2 + 4;
+      const paddingX = 2;
+      const width = dotGap + measureCtx.measureText(name).width + paddingX;
+      const height = Math.max(fontSize + 6, dotRadius * 2 + 4);
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+
+      ctx.beginPath();
+      ctx.arc(dotRadius + 1, height / 2, dotRadius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#12161c';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = `${fontWeight} ${fontSize}px system-ui, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      // A dark halo behind the text keeps it legible over roads/other map content without a
+      // solid background box.
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(18,22,28,0.85)';
+      ctx.strokeText(name, dotGap, height / 2 + 0.5);
+      ctx.fillStyle = color;
+      ctx.fillText(name, dotGap, height / 2 + 0.5);
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    // State names: larger, letter-spaced, muted (atlas-style background context, not competing
+    // with city names for attention), no position dot - a state covers a whole region, not a
+    // point, so a marker there wouldn't mean anything the way it does for a city.
+    function drawStateLabel(name) {
+      const scale = 2;
+      const fontSize = 15;
+      const letterSpacing = 2;
+      const upperName = name.toUpperCase();
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = `600 ${fontSize}px system-ui, sans-serif`;
+      let textWidth = 0;
+      for (const ch of upperName) textWidth += measureCtx.measureText(ch).width + letterSpacing;
+      const paddingX = 4;
+      const width = textWidth + paddingX * 2;
+      const height = fontSize + 6;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(18,22,28,0.7)';
+      ctx.fillStyle = '#6b7686';
+      let x = paddingX;
+      for (const ch of upperName) {
+        ctx.strokeText(ch, x, height / 2 + 0.5);
+        ctx.fillText(ch, x, height / 2 + 0.5);
+        x += measureCtx.measureText(ch).width + letterSpacing;
+      }
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    map.on('styleimagemissing', e => {
+      const id = e.id;
+      try {
+        if (id.startsWith('city-label:')) {
+          const rest = id.slice('city-label:'.length);
+          const lastColon = rest.lastIndexOf(':');
+          const name = rest.slice(0, lastColon);
+          const scaleRank = Number(rest.slice(lastColon + 1)) || 0;
+          const { imageData, scale } = drawCityLabel(name, scaleRank);
+          map.addImage(id, imageData, { pixelRatio: scale });
+        } else if (id.startsWith('town-label:')) {
+          // Small settlements from highway mileage-sign data (see extract-town-labels.ts) - not
+          // real ATS "cities", so no scaleRank of their own. Reusing drawCityLabel with a fixed
+          // pseudo-rank past its own dimmest/smallest bracket keeps every town labeled (matching
+          // the in-game world map's own density) while staying visually subordinate to every real
+          // city - which is also why symbol-sort-key gives real cities collision priority over
+          // these when space is tight.
+          const name = id.slice('town-label:'.length);
+          const { imageData, scale } = drawCityLabel(name, 11);
+          map.addImage(id, imageData, { pixelRatio: scale });
+        } else if (id.startsWith('state-label:')) {
+          const name = id.slice('state-label:'.length);
+          const { imageData, scale } = drawStateLabel(name);
+          map.addImage(id, imageData, { pixelRatio: scale });
+        } else if (id.startsWith('road-sign:')) {
+          const [shieldType, number] = id.slice('road-sign:'.length).split(':');
+          const { imageData, scale } = drawShield(number, shieldType);
+          map.addImage(id, imageData, { pixelRatio: scale });
+        }
+      } catch (err) {
+        reportToHost('error', `styleimagemissing failed for ${id}: ${err}`);
+      }
+    });
+
+    map.on('error', e => reportToHost('error', `maplibre error: ${e.error ? e.error.message : JSON.stringify(e)}`));
+    map.on('load', () => {
+      reportToHost('info', 'map load event fired');
+
+      const fuel = drawBadge('F', 20, '#3ecf6e', '#0c1f14');
+      map.addImage('poi-fuel', fuel.imageData, { pixelRatio: fuel.scale });
+      const weigh = drawBadge('W', 20, '#FFC24C', '#241a05');
+      map.addImage('poi-weigh', weigh.imageData, { pixelRatio: weigh.scale });
+      const rest = drawBadge('R', 20, '#4C9AFF', '#08182b');
+      map.addImage('poi-rest', rest.imageData, { pixelRatio: rest.scale });
+      const service = drawBadge('S', 20, '#FF7043', '#2b0f05');
+      map.addImage('poi-service', service.imageData, { pixelRatio: service.scale });
+
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'mapReady' });
+      }
+    });
+
+    map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+
+    // Manual routing: click anywhere on the map to route from the truck's current position to that
+    // point - drops a pin for visual confirmation and asks the C# side (GpsMapViewModel) to compute
+    // the route, same pipeline as a job's own destination.
+    function createPinElement() {
+      const el = document.createElement('div');
+      el.style.width = '20px';
+      el.style.height = '26px';
+      el.innerHTML = `
+        <svg viewBox="0 0 20 26" width="20" height="26" style="display:block">
+          <path d="M10 0 C4.5 0 0 4.5 0 10 C0 17.5 10 26 10 26 C10 26 20 17.5 20 10 C20 4.5 15.5 0 10 0 Z"
+                fill="#5FD85F" stroke="#12161c" stroke-width="1.2" />
+          <circle cx="10" cy="10" r="3.6" fill="#12161c" />
+        </svg>`;
+      return el;
+    }
+
+    // Placing a pin is opt-in (must press the Pin button first) rather than reacting to every map
+    // click - a plain click used for panning/scrolling was registering as an accidental pin drop.
+    map.on('click', e => {
+      if (!pinModeActive) {
+        return;
+      }
+      pinModeActive = false;
+      pinBtn.classList.remove('active');
+      map.getCanvas().style.cursor = '';
+
+      const { lng, lat } = e.lngLat;
+      if (!pinMarker) {
+        pinMarker = new Marker({ element: createPinElement(), anchor: 'bottom' }).setLngLat([lng, lat]).addTo(map);
+      } else {
+        pinMarker.setLngLat([lng, lat]);
+      }
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'setPinDestination', lon: lng, lat });
+      }
+    });
+
+    function createMarkerElement() {
+      const el = document.createElement('div');
+      el.style.width = '22px';
+      el.style.height = '22px';
+      el.innerHTML = `
+        <svg viewBox="0 0 24 24" width="22" height="22" style="display:block">
+          <path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="#FFC24C" stroke="#12161c" stroke-width="1.2" />
+        </svg>`;
+      return el;
+    }
+
+    // The route displayed here trims progressively as the truck drives (only ever shows what's
+    // ahead, not behind) - this used to mean GpsMapViewModel pushing the entire remaining route
+    // (up to ~3,500 points) through the WebView2 message bridge on nearly every ~1s position tick,
+    // which got visibly sluggish once it was live for a whole drive: a fresh JSON serialization +
+    // IPC round-trip + full MapLibre GeoJSON re-tessellation, once a second, for the whole trip.
+    // The actual live-position push already happens every tick regardless (tiny payload, 4
+    // numbers) - fullRoutePoints holds the last real route setRoute() received, and setLivePosition
+    // trims its own local copy of it using that same already-arriving position data, so a full
+    // route re-push over the bridge only happens on a genuine new route (job change, a manual pin,
+    // a deviation reroute - all comparatively rare), not on every single tick of ordinary driving.
+    let fullRoutePoints = null;
+
+    function setLivePosition(pos) {
+      lastPos = pos;
+      if (!marker) {
+        marker = new Marker({ element: createMarkerElement(), rotationAlignment: 'map' })
+          .setLngLat([pos.lon, pos.lat])
+          .addTo(map);
+      } else {
+        marker.setLngLat([pos.lon, pos.lat]);
+      }
+      marker.setRotation(pos.bearing);
+
+      if (follow) {
+        // An eased 600ms pan happening on essentially every position tick meant the map was mid-
+        // animation - continuously repainting every frame for that whole window - almost the
+        // entire time follow mode was on, not just occasionally. jumpTo repaints once, instantly,
+        // for the same net camera movement (position updates roughly once a second anyway, so the
+        // eased "smoothness" mostly wasn't visible over that gap regardless) - a real ongoing GPU
+        // cost traded for a small loss of animation polish.
+        map.jumpTo({ center: [pos.lon, pos.lat] });
+      }
+
+      trimRouteToPosition(pos);
+    }
+
+    // Finds the closest point on the currently-held route to `pos` and, if it's not the first
+    // point anymore, drops everything before it and redraws - a plain lon/lat distance (not a real
+    // geodesic one) is plenty for this, since it's only ever picking among points already a few
+    // hundred meters apart along a route we already know is nearby, not measuring an exact
+    // distance the way GpsMapViewModel's own off-route check (in real meters, server-side) does.
+    function trimRouteToPosition(pos) {
+      if (!fullRoutePoints || fullRoutePoints.length < 2) {
+        return;
+      }
+      let nearestIndex = 0;
+      let nearestDistSq = Infinity;
+      for (let i = 0; i < fullRoutePoints.length; i++) {
+        const dLon = fullRoutePoints[i][0] - pos.lon;
+        const dLat = fullRoutePoints[i][1] - pos.lat;
+        const distSq = dLon * dLon + dLat * dLat;
+        if (distSq < nearestDistSq) {
+          nearestDistSq = distSq;
+          nearestIndex = i;
+        }
+      }
+      if (nearestIndex > 0) {
+        fullRoutePoints = fullRoutePoints.slice(nearestIndex);
+        drawRoute(fullRoutePoints);
+      }
+    }
+
+    // Backend-computed (see RoutingService.cs) - pushed on a genuine new route (job/pin/deviation
+    // change), not an accumulating position history like the earlier "breadcrumb trail" that was
+    // removed, and not on every trim tick either (see trimRouteToPosition above).
+    function setRoute(points) {
+      reportToHost('info', `setRoute called with ${points ? points.length : 0} points`);
+      fullRoutePoints = points && points.length >= 2 ? points : null;
+      drawRoute(points);
+    }
+
+    function drawRoute(points) {
+      const routeSource = map.getSource('route');
+      if (!routeSource) {
+        reportToHost('error', 'drawRoute: route source not found on map');
+        return;
+      }
+      // A LineString needs at least 2 points - an empty/cleared route (job delivered/cancelled)
+      // clears the layer via an empty FeatureCollection instead of a degenerate geometry.
+      if (!points || points.length < 2) {
+        routeSource.setData({ type: 'FeatureCollection', features: [] });
+        return;
+      }
+      routeSource.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: points },
+        properties: {},
+      });
+    }
+
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.addEventListener('message', event => {
+        const msg = event.data;
+        if (!msg || !msg.type) {
+          return;
+        }
+        if (msg.type === 'livePosition') {
+          setLivePosition(msg);
+        } else if (msg.type === 'route') {
+          setRoute(msg.points);
+        } else if (msg.type === 'lanStatus') {
+          lanBtn.classList.toggle('active', msg.active);
+          if (msg.active && msg.url) {
+            lanStatus.textContent = `LAN: ${msg.url}`;
+            lanStatus.classList.add('visible');
+          } else {
+            lanStatus.classList.remove('visible');
+          }
+        } else if (msg.type === 'fpsCap') {
+          // See the requestAnimationFrame throttle near the top of this file - CoreBalancer (the
+          // same per-core CPU sampling that already steers this map's own renderer/GPU processes
+          // off the busiest cores) decides whether there's real system headroom to allow 60fps, or
+          // whether 30fps is the safer default given what else is running (the game, chiefly).
+          window.__mapTargetFps = msg.targetFps;
+          reportToHost('info', `map FPS cap set to ${msg.targetFps}`);
+        }
+      });
+    } else {
+      // Remote LAN view: no postMessage bridge, so poll GpsLanServer's read-only JSON endpoints
+      // instead. Position moves continuously so it's polled fast (matches GpsMapViewModel's own
+      // ~1s push rate on the local side); the route only ever changes on an actual destination
+      // change, so a much slower poll is plenty and avoids hammering the server for nothing.
+      const poll = (url, onData) => {
+        fetch(url)
+          .then(r => r.json())
+          .then(onData)
+          .catch(err => reportToHost('error', `poll ${url} failed: ${err}`));
+      };
+      poll('/api/position', pos => { if (pos) setLivePosition(pos); });
+      poll('/api/route', data => setRoute(data.points));
+      setInterval(() => poll('/api/position', pos => { if (pos) setLivePosition(pos); }), 1500);
+      setInterval(() => poll('/api/route', data => setRoute(data.points)), 5000);
+    }
+  })
+  .catch(err => reportToHost('error', `failed to load maplibre module: ${err}`));
