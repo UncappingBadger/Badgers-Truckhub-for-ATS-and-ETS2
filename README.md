@@ -4,6 +4,10 @@ A small always-on-top overlay for Euro Truck Simulator 2 / American Truck Simula
 information you actually want while driving, without alt-tabbing or squinting at the in-cab dash.
 Works the same whether you're hauling in the US or across Europe, UK included.
 
+*TruckHub is an independent fan-made project, not affiliated with or endorsed by SCS Software.
+It only reads telemetry the games publish through their own official SDK - no game files are
+modified or redistributed.*
+
 ## What it shows
 
 - **Speed sign** — the speed limit, shown as a US-style rectangle in ATS or a round European sign in
@@ -154,3 +158,14 @@ also check any time yourself with the **Check for Updates** button at the top of
 
 For a complete breakdown of every icon, gauge, and colour code — what each one means and exactly
 when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
+
+## Credits & third-party software
+
+TruckHub's telemetry reading is built on [RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin)
+(MIT), and the live GPS map is rendered with [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)
+(BSD-3-Clause) — both distributed as part of TruckHub. The GPS map's underlying tile and route
+data were generated using [TruckSim Maps](https://github.com/truckermudgeon/maps) (GPL-3.0) as a
+development-time tool, and its routing engine was designed after studying
+[TruckNav-Sim](https://github.com/Rares-Muntean/TruckNav-Sim) (GPL-3.0) as a reference, with no
+code copied from either. Full license texts and details on exactly what was used and how are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
