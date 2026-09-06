@@ -89,16 +89,11 @@ your live position and heading, and once a job's destination is known, draws a r
 follows real roads to get there. The route is calculated once per job rather than constantly
 re-routing, the same way most dedicated GPS units work.
 
-Covers the full map for both games, including ETS2's UK — reachable in-game only by ferry, and
-included on the map as real, drivable roads. Note that TruckHub's GPS has no connection to the
-in-game GPS — they're computed completely independently, so depending on routing they can
-occasionally disagree with each other. That's a limitation of what the SCS SDK exposes, not a bug.
-
-**One routing gap worth knowing about**: TruckHub can't route *across* a ferry or train crossing —
-so on a job that starts on one side of one (the UK and mainland Europe, most notably) and ends on
-the other, the map won't show a route for the water-crossing leg. It picks the route back up
-automatically as soon as you're actually off the ferry/train and on the same landmass as your
-destination — nothing to do on your end, just expect a blank map for that stretch.
+Covers the full map for both games, including ETS2's UK — reachable in-game only by ferry — and
+routes straight across a ferry or train crossing as part of the same job, the same way it would any
+other stretch of the trip. Note that TruckHub's GPS has no connection to the in-game GPS — they're
+computed completely independently, so depending on routing they can occasionally disagree with
+each other. That's a limitation of what the SCS SDK exposes, not a bug.
 
 **LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
 browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs

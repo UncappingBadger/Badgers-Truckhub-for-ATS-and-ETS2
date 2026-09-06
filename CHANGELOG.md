@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.0 - 2026-09-06
+
+### Added
+- ETS2 GPS map now routes straight across ferry and train crossings (the UK to mainland Europe,
+  most notably) as part of the same job, instead of stopping at the water's edge. Each crossing is
+  weighted by its own real in-game time, so it's treated like any other stretch of the route rather
+  than a rough guess.
+
 ## v2.0.1 - 2026-09-06
 
 ### Fixed

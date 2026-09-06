@@ -195,6 +195,39 @@ session: retried cleanly every ~15s while still on the UK side (correctly showin
 time), then picked up a 1,107-point route within one retry cycle of the in-game "Train used" event
 firing for the Channel crossing. Shipped as v2.0.1.
 
+## Added live, v2.1.0 (2026-09-06): ferries/trains are now real routable edges
+
+Same day as the v2.0.1 fix above, revisited whether the underlying "ferries aren't routable at all"
+limitation could be lifted instead of just working around its symptom. Turned out to need far less
+than a rewrite: `{MAP}-ferries.json` already carries each connection's real in-game crossing time
+(`conn.time`, minutes) and price - nothing to estimate. `build-route-graph.mjs`'s existing ferry
+`union()` loop (added for pruning in the v2.0.0 UK-connectivity fix) now also pushes a real
+`{from, to, weight, heading}` edge into the same `edges` array every road/prefab edge goes into,
+weighted by `conn.time * 60` seconds - RoutingService's A* needed zero changes, since it already
+treats every edge identically regardless of what it represents. 129 of 129 ferry/train connections
+had a usable time field, so all of them became real edges, not just pruning-only unions.
+
+Verified in three independent steps before touching anything shipped: (1) a JS batch-connectivity
+test jumped from 167/200 (the old ferry-pruning-only baseline) to 199/200 random company pairs
+routable; (2) the exact live-failing case, Newcastle-upon-Tyne -> Dijon, resolves via a plain JS
+A* mirror in 8ms at ~1.7h estimated crossing+drive time; (3) re-verified with the *actual*
+unmodified `RoutingService.FindRoute` (U-turn prevention and all, not just the JS mirror) via a
+standalone console harness pointed at the same new zip - identical result, 2,448-node route,
+~1.7h. Also caught and fixed a mistake made mid-investigation: regenerating straight into the
+shared `out/route-graph` directory used *stale prefab-connections.json/road-curves.json* (0 real
+curves matched, a silent regression unrelated to ferries) - the correct, already-documented command
+uses a separate `out/route-graph-europe` output directory; redone correctly, node/edge counts came
+back identical to the documented v2.0.0 baseline plus exactly the 129 new ferry edges, nothing else
+differed.
+
+Route lines are drawn as a single straight segment across the water (`conn.intermediatePoints` is
+empty for every connection checked) - the same simplification most GPS apps make for ferry legs,
+and consistent with this script's own existing straight-chord fallback for prefab pairs curve
+tracing doesn't cover. Not yet live-tested through an actual drive (the fix above already covers
+the "does the map recover after crossing" behavior change once TruckHub reports a route mid-ferry
+instead of nothing) - genuinely new territory is whether the drawn line looks reasonable rendered
+over the water on the real map; flag it if a crossing looks off.
+
 ## Deferred to a future version (not blocking v2.0)
 
 - **No real country/state landmass shapes on the map, for either game.** Not a UK or ETS2-specific

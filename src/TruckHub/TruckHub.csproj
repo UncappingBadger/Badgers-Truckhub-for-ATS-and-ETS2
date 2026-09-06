@@ -12,7 +12,7 @@
     <RootNamespace>TruckHub</RootNamespace>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <Version>2.0.1</Version>
+    <Version>2.1.0</Version>
 
     <!-- Publish settings: one self-contained exe, no separate .NET install required -->
     <SelfContained>true</SelfContained>
