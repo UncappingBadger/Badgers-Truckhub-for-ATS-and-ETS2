@@ -51,6 +51,18 @@ public sealed class GpsMapViewModel : IDisposable
     private bool _routeComputationInFlight;
     private bool _hasLoggedFirstSnapshot;
 
+    // A route attempt can legitimately fail with the job destination unchanged - e.g. the truck
+    // starts on the opposite side of a ferry-only crossing (see RoutingService/build-route-graph.mjs:
+    // ferries are deliberately not routable edges) from where the destination sits. That's meant to
+    // recover once the truck's live position ends up on the same landmass as the destination (i.e.
+    // after actually taking the ferry) - found live (2026-09-06, a Newcastle-upon-Tyne -> Dijon job)
+    // that it never did, because UpdateJobRoute only ever re-attempts on an actual destination
+    // *change*. Retried periodically instead, whenever a destination is active but nothing's
+    // currently showing - throttled well below the 1Hz position push so a long crossing doesn't
+    // re-run A* over the whole graph every tick.
+    private DateTime _lastRouteAttemptUtc = DateTime.MinValue;
+    private static readonly TimeSpan RouteRetryInterval = TimeSpan.FromSeconds(15);
+
     // The currently-displayed route, kept in raw game (X, Z) alongside the projected (Lon, Lat) -
     // AdvanceRoute needs real-meter distances for the off-route check, and reusing the same raw
     // coordinates RoutingService/the graph already work in avoids any lon/lat-degree distance skew
@@ -229,6 +241,16 @@ public sealed class GpsMapViewModel : IDisposable
 
         if (destinationKey == _lastJobDestinationKey)
         {
+            // Same job, same destination - normally nothing to do. The exception: a destination
+            // is active but nothing's currently showing, meaning the last attempt at it failed
+            // (most likely a ferry-only crossing the truck hadn't made yet). Worth trying again
+            // now that the truck may have moved, on a cooldown rather than every tick.
+            if (hasDestination && _remainingRoutePoints.Count == 0 && !_routeComputationInFlight
+                && DateTime.UtcNow - _lastRouteAttemptUtc > RouteRetryInterval)
+            {
+                RunRouteComputation(snapshot.PositionX, snapshot.PositionZ,
+                    ResolveJobDestination(snapshot.CityDestinationId, snapshot.CompanyDestinationId));
+            }
             return; // job hasn't changed - leave whatever's currently displayed (job route or a
                      // manual pin override) alone.
         }
@@ -298,6 +320,8 @@ public sealed class GpsMapViewModel : IDisposable
         {
             return; // a newer request arrived mid-computation - whichever triggers this again later wins.
         }
+
+        _lastRouteAttemptUtc = DateTime.UtcNow;
 
         // Captured regardless of which caller (job destination, clearing a pin back to the job, a
         // manual pin, or AdvanceRoute's own deviation recompute) triggered this - keeps whatever

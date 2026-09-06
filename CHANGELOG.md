@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.1 - 2026-09-06
+
+### Fixed
+- ETS2 GPS map: after a job that crosses the Channel (UK to mainland or back), the route now picks
+  back up automatically once you're actually off the ferry/train, instead of staying blank for the
+  rest of the job. Found and confirmed live the same day, on a real Newcastle-upon-Tyne -> Dijon
+  run.
+
 ## v2.0.0 - 2026-09-06
 
 The big one. ETS2 support, a whole new instruments panel, and a bunch of smaller stuff that's been on the list for a while.

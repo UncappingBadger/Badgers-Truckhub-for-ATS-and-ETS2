@@ -94,6 +94,12 @@ included on the map as real, drivable roads. Note that TruckHub's GPS has no con
 in-game GPS — they're computed completely independently, so depending on routing they can
 occasionally disagree with each other. That's a limitation of what the SCS SDK exposes, not a bug.
 
+**One routing gap worth knowing about**: TruckHub can't route *across* a ferry or train crossing —
+so on a job that starts on one side of one (the UK and mainland Europe, most notably) and ends on
+the other, the map won't show a route for the water-crossing leg. It picks the route back up
+automatically as soon as you're actually off the ferry/train and on the same landmass as your
+destination — nothing to do on your end, just expect a blank map for that stretch.
+
 **LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
 browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs
 installing on the other device, and it's read-only: placing a pin or turning LAN Mode on/off only

@@ -176,6 +176,25 @@ border along the way).
   branches, shared telemetry), just hasn't been specifically eyeballed yet - low risk given EXT and
   LAN Mode (both bigger surfaces) already checked out fine.
 
+## Found and fixed live, v2.0.1 (2026-09-06): route never recovered after a ferry/train crossing
+
+The line above ("a job route still correctly won't draw across a ferry crossing itself") turned out
+to only be half true. That part's correct and intentional - `build-route-graph.mjs` deliberately
+doesn't add ferry connections as routable edges (see its own comment), so a route genuinely can't be
+computed while the truck and destination are on opposite sides of one. What wasn't correct: the code
+assumed that once the truck's position ended up on the same landmass as the destination (i.e. after
+actually taking the ferry/train), a fresh attempt would pick the route back up. It never did -
+`GpsMapViewModel.UpdateJobRoute` only ever re-attempts routing on an actual destination *change*, so
+a route that failed once at job start stayed failed for the rest of that job, crossing or not.
+
+Found live on a real Newcastle-upon-Tyne -> Dijon job (mid-drive, reported by the user while
+actively playing). Fixed by having `UpdateJobRoute` retry on a 15-second cooldown whenever a
+destination is active but nothing's currently showing, rather than only on a destination change -
+see `GpsMapViewModel.cs`'s `_lastRouteAttemptUtc`/`RouteRetryInterval`. Confirmed live the same
+session: retried cleanly every ~15s while still on the UK side (correctly showing no route each
+time), then picked up a 1,107-point route within one retry cycle of the in-game "Train used" event
+firing for the Channel crossing. Shipped as v2.0.1.
+
 ## Deferred to a future version (not blocking v2.0)
 
 - **No real country/state landmass shapes on the map, for either game.** Not a UK or ETS2-specific
