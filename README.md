@@ -2,6 +2,7 @@
 
 A small always-on-top overlay for Euro Truck Simulator 2 / American Truck Simulator that shows the
 information you actually want while driving, without alt-tabbing or squinting at the in-cab dash.
+Works the same whether you're hauling in the US or across Europe, UK included.
 
 ## What it shows
 
@@ -12,15 +13,17 @@ information you actually want while driving, without alt-tabbing or squinting at
 - **Lights cluster** — a row of icons, braking system first (parking brake, retarder — showing the
   actual engaged level, not just on/off — and engine/Jake brake, grouped together since they're all
   the same system), then sidelights, low beam, high beam, beacon, differential lock, and lift/tag
-  axle position (see "What the icons mean" below)
+  axle position (full breakdown in the manual — see below)
 - **In-game clock** — a small digital-clock display directly under the speed limit sign, in green
   monospace digits so it's never mistaken for your PC's actual clock; always visible regardless of
   whether you've got an active job
 - **Warning lights** — the same low air pressure / emergency brake / oil pressure / engine temp / low
   fuel / low AdBlue / battery warnings your dashboard has, dimmed until something actually needs
-  attention (see "What the icons mean" below)
+  attention
 - **Current speed** — its own gauge with a ring that fills as you speed up, coloured green while
   you're at or under the limit, amber up to 5 over, red beyond that
+- **Odometer** — a six-digit mechanical-style ticker under the speedometer, tracking lifetime
+  distance and flashing on every rollover, just like the real thing
 - **Cruise control** — lit up when it's on, showing the speed it's set to
 - **Gear & RPM** — gear in its own box, showing the actual gear number for manual/H-shifter trucks
   (see H-shifter calibration below) or **D / N / P / R** automatically if you're driving an automatic;
@@ -28,7 +31,7 @@ information you actually want while driving, without alt-tabbing or squinting at
 - **Job info** — route, cargo and weight, payout, distance travelled, time left
 - **Fuel & AdBlue gauge** — a real analogue-style dial for fuel with a needle that sweeps to the actual
   level (not a snap-to-value jump), plus a 4-segment level bar for AdBlue built into the same gauge
-  face on trucks that have one (see "What the icons mean" below for how to read it)
+  face on trucks that have one
 - **Trip Needs & Economy** — what percentage of your fuel tank the rest of this trip will use (green if
   you've got enough, red if you don't), plus your actual MPG or L/100km based on real driving, not a
   spec-sheet number
@@ -36,8 +39,12 @@ information you actually want while driving, without alt-tabbing or squinting at
   fatigue simulation turned on (see below — this needs turning on in Settings too, since TruckHub
   can't tell on its own whether you're using it)
 - **Job logbook** — a running record of every job you deliver this session: pickup, drop-off, mileage,
-  and payout, with a running total. Tucked away behind a small arrow tab so it's out of the way until
-  you want it (see "Using the job logbook" below)
+  and payout, with a running total (see "Using the job logbook" below)
+- **Live GPS map** — a real, road-following map of wherever you're driving, with a route to your
+  current job that reroutes if you go off track (see "The GPS map" below)
+- **Extended Instruments (EXT)** — a second panel for everything the main dashboard doesn't have room
+  for: oil/water temps, oil pressure, battery voltage, brake air pressure and temp, suspension
+  deflection per wheel, and more (see "The EXT window" below)
 
 Every item above can be turned off individually in Settings if you don't want it cluttering the
 overlay — the window reflows to fit whatever's left on.
@@ -64,9 +71,37 @@ turned on, since that's what feeds the speed limit sign.
     gear numbers for an H-shifter truck, and point TruckHub at your mod folder manually if it's
     somewhere nonstandard
   - **UI Setup** — switch between MPH/KM-H, Tonnes/Lbs, and Litres/Gallons independently of each
-    other; turn any HUD element on or off, including the speed sign, in-game clock, and
+    other; turn any HUD element on or off, including the speed sign, in-game clock, odometer, and
     current-speed gauge separately; and turn on the rest timer if you drive with fatigue simulation
     enabled
+- **GPS / LOG / EXT** — docked tabs for opening the GPS map, job logbook, and Extended Instruments
+  window.
+
+### The GPS map
+
+Click the **GPS** tab to open a real, road-following map — actual roads, cities, and state/country
+borders for whichever game you're in, not a generic map with your position pasted on top. It tracks
+your live position and heading, and once a job's destination is known, draws a route that actually
+follows real roads to get there. The route is calculated once per job rather than constantly
+re-routing, the same way most dedicated GPS units work.
+
+Covers the full map for both games, including ETS2's UK — reachable in-game only by ferry, and
+included on the map as real, drivable roads. Note that TruckHub's GPS has no connection to the
+in-game GPS — they're computed completely independently, so depending on routing they can
+occasionally disagree with each other. That's a limitation of what the SCS SDK exposes, not a bug.
+
+**LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
+browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs
+installing on the other device, and it's read-only: placing a pin or turning LAN Mode on/off only
+ever happens from the PC itself.
+
+### The EXT window
+
+Click the **EXT** tab for a second instrument panel covering everything the main dashboard doesn't
+have room for: analog gauges for oil pressure, oil temperature, water temperature, battery voltage,
+and brake air pressure/temperature; a suspension-deflection readout per wheel on both truck and
+trailer, with lift/tag axles clearly labelled; and accessory wear. Every element can be switched on
+or off individually from its own settings window, same as the main dashboard.
 
 ### Suggested mod load order
 
@@ -115,58 +150,7 @@ latest version, or you're offline, nothing happens and you're never interrupted.
 is out, Settings shows an **Update available** message with a link straight to the release. You can
 also check any time yourself with the **Check for Updates** button at the top of Settings.
 
-## What the icons mean
+## Full manual
 
-TruckHub mirrors real truck dashboard telltales, including the colours — grey/dim always means "off",
-a colour means "on". If you don't drive real vehicles for a living, here's what each one is:
-
-### Lights cluster
-
-| Icon | Meaning | Colour when on |
-|---|---|---|
-Parking brake, retarder, and engine brake are grouped together first, since they're all the same
-braking system - just different use cases:
-
-| Icon | Meaning | Colour when on |
-|---|---|---|
-| Circle with **P** | Parking brake is engaged | Red |
-| Circle with **R** | Retarder - only shown on trucks that actually have one. The letter itself swaps to the current level number while engaged | Green, showing the engaged level (1, 2, 3...); dim **R** when off |
-| Circle with **E** / **J** | Engine brake is on - labelled **E** in ETS2, **J** (Jake brake) in ATS | Green |
-| Small lamp (dot in a circle) | Sidelights / parking lights are on | Green |
-| Lamp with angled beams | Low beam headlights are on | Green |
-| Lamp with straight beams | High beam headlights are on | Blue |
-| Dome with rays | Roof beacon (the amber warning light some trucks carry) is on | Amber |
-| Padlock | Differential lock is engaged (locks the axle so both wheels spin together - used for extra grip in mud/snow/ice) | Amber |
-| Wheel with an up-arrow | Lift/tag axle position - only shown on trucks that actually have one | Amber = axle lifted up; dim = lowered (normal, full load) |
-
-### Warning cluster
-
-These only light up when something is actually wrong — everything dim means everything's fine.
-
-| Icon | Meaning | Colour when tripped |
-|---|---|---|
-| Circle with **!** | Air pressure in the brake system is low | Red |
-| Circle with **P** | Emergency brake has auto-applied because air pressure got critically low (different from the parking brake icon above — this one means a fault, not you choosing to park) | Red |
-| Oil can | Oil pressure is low | Red |
-| Thermometer | Engine coolant is overheating | Red |
-| Fuel pump | Fuel is running low | Amber |
-| Droplet | AdBlue is running low | Amber |
-| Battery | Charging system fault — you could lose electrical power | Red |
-
-Red always means "safety-critical, deal with it soon"; amber means "needs attention, not urgent yet".
-
-### Fuel & AdBlue gauge
-
-Built to read like a real combined gauge, not just a number:
-
-- The **needle** sweeps between **E** (empty) and **F** (full) as your fuel level actually changes —
-  it eases toward the real reading rather than jumping to it, the same way a physical gauge would.
-  The **red arc** near E marks roughly the last eighth of the tank, matching where most real vehicles'
-  low-fuel warning kicks in.
-- The small **light near "E"** is the low-fuel warning — same idea as the light on a real dashboard,
-  separate from the needle itself (a real gauge needle doesn't change colour when you're running low).
-- On trucks with AdBlue, the **4-segment bar** below the needle works the same way: each segment lights
-  as the level reaches into that quarter, with its own small warning light near its own "E".
-- Both the needle and the AdBlue bar sit pinned at empty whenever your truck's electrics are off (key
-  out) — that's deliberate, matching how a real gauge has no power of its own to hold a reading without
-  the ignition on.
+For a complete breakdown of every icon, gauge, and colour code — what each one means and exactly
+when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
