@@ -100,6 +100,13 @@ public sealed class TelemetryService : IDisposable
             : string.Join(",", Array.ConvertAll(motor.GearRatiosForward, r => r.ToString("0.000")));
         var gearboxFingerprint = $"{motor.ForwardGearCount}|{motor.ReverseGearCount}|{motor.SelectorCount}|{ratioSignature}";
 
+        // First attached trailer only - see TelemetrySnapshot's own comment on why (multi-trailer
+        // combos exist in-game but a single trailer covers the instrument-cluster use case this is
+        // for). TrailerValues can be null/empty with nothing hitched.
+        var trailer = data.TrailerValues is { Length: > 0 } ? data.TrailerValues[0] : null;
+        var trailerAttached = trailer?.Attached ?? false;
+        var trailerWheelCount = trailerAttached ? trailer!.WheelsConstant.Count : 0;
+
         return new TelemetrySnapshot
         {
             SdkActive = true,
@@ -177,8 +184,58 @@ public sealed class TelemetryService : IDisposable
             RangeIsHigh = isHShifter && selector is { Length: > 1 }
                 ? selector[1]
                 : (bool?)null,
+
+            OilPressurePsi = data.TruckValues.CurrentValues.DashboardValues.OilPressure,
+            OilTemperatureC = data.TruckValues.CurrentValues.DashboardValues.OilTemperature,
+            WaterTemperatureC = data.TruckValues.CurrentValues.DashboardValues.WaterTemperature,
+            BatteryVoltage = data.TruckValues.CurrentValues.DashboardValues.BatteryVoltage,
+            BatteryVoltageWarnThreshold = data.TruckValues.ConstantsValues.WarningFactorValues.BatteryVoltage,
+            BrakeAirPressurePsi = data.TruckValues.CurrentValues.MotorValues.BrakeValues.AirPressure,
+            BrakeTemperatureC = data.TruckValues.CurrentValues.MotorValues.BrakeValues.Temperature,
+            OdometerKm = data.TruckValues.CurrentValues.DashboardValues.Odometer,
+
+            EngineWear = data.TruckValues.CurrentValues.DamageValues.Engine,
+            TransmissionWear = data.TruckValues.CurrentValues.DamageValues.Transmission,
+            CabinWear = data.TruckValues.CurrentValues.DamageValues.Cabin,
+            ChassisWear = data.TruckValues.CurrentValues.DamageValues.Chassis,
+            WheelsWearAvg = data.TruckValues.CurrentValues.DamageValues.WheelsAvg,
+            // Trimmed to the truck's own reported wheel count - the SDK arrays are fixed-size (up to
+            // 14 slots), so a truck with fewer real axles than that would otherwise show padding
+            // slots as bogus "0mm"/airborne entries. See the matching trailer comment below.
+            TruckSuspDeflection = TrimToCount(data.TruckValues.CurrentValues.WheelsValues.SuspDeflection, data.TruckValues.ConstantsValues.WheelsValues.Count),
+            TruckWheelLiftable = TrimToCount(data.TruckValues.ConstantsValues.WheelsValues.Liftable, data.TruckValues.ConstantsValues.WheelsValues.Count),
+            TruckWheelLift = TrimToCount(data.TruckValues.CurrentValues.WheelsValues.Lift, data.TruckValues.ConstantsValues.WheelsValues.Count),
+            TruckWheelPowered = TrimToCount(data.TruckValues.ConstantsValues.WheelsValues.Powered, data.TruckValues.ConstantsValues.WheelsValues.Count),
+            TruckWheelSteerable = TrimToCount(data.TruckValues.ConstantsValues.WheelsValues.Steerable, data.TruckValues.ConstantsValues.WheelsValues.Count),
+
+            TrailerAttached = trailerAttached,
+            TrailerName = (trailerAttached ? trailer!.Name : null) ?? "",
+            TrailerBodyWear = trailerAttached ? trailer!.DamageValues.Body : 0f,
+            TrailerCargoWear = trailerAttached ? trailer!.DamageValues.Cargo : 0f,
+            TrailerChassisWear = trailerAttached ? trailer!.DamageValues.Chassis : 0f,
+            TrailerWheelsWear = trailerAttached ? trailer!.DamageValues.Wheels : 0f,
+            // Trimmed to the trailer's own reported wheel count (WheelsConstant.Count) - trailers with
+            // fewer axles than the SDK's max array size otherwise show unused slots as fake "AIRBORNE"
+            // axles (lift=0, onGround=false is indistinguishable from "not there" vs "genuinely off the
+            // ground"). Real liftable tag/mid-lift axles are within the reported count, so they still
+            // show up (correctly, as LIFTED when raised) - this only drops slots beyond the real count.
+            TrailerSuspDeflection = trailerAttached ? TrimToCount(trailer!.Wheelvalues.SuspDeflection, trailerWheelCount) : Array.Empty<float>(),
+            TrailerWheelLift = trailerAttached ? TrimToCount(trailer!.Wheelvalues.Lift, trailerWheelCount) : Array.Empty<float>(),
+            TrailerWheelOnGround = trailerAttached ? TrimToCount(trailer!.Wheelvalues.OnGround, trailerWheelCount) : Array.Empty<bool>(),
+            TrailerWheelLiftable = trailerAttached ? TrimToCount(trailer!.WheelsConstant.Liftable, trailerWheelCount) : Array.Empty<bool>(),
+            TrailerLiftAxleUp = data.TruckValues.CurrentValues.TrailerLiftAxle,
+            TrailerLiftAxleIndicatorOn = data.TruckValues.CurrentValues.TrailerLiftAxleIndicator,
         };
     }
+
+    /// <summary>Trims a fixed-size per-wheel SDK array down to a vehicle's actual reported wheel
+    /// count, so slots beyond the real axle count (padding, always zero/false) never reach the UI as
+    /// fake readings. Null input (no data for this vehicle) becomes an empty array.</summary>
+    private static float[] TrimToCount(float[]? values, uint count) =>
+        values is null ? Array.Empty<float>() : values.Length > count ? values[..(int)count] : values;
+
+    private static bool[] TrimToCount(bool[]? values, uint count) =>
+        values is null ? Array.Empty<bool>() : values.Length > count ? values[..(int)count] : values;
 
     public void Dispose()
     {

@@ -30,7 +30,12 @@ namespace TruckHub.Services;
 public static class WebMapAssetExtractor
 {
     private const string ResourcePrefix = "TruckHub.WebMap/";
-    private const string TilesZipResourceName = "TruckHub.WebMap.tiles.zip";
+
+    private static readonly (string ResourceName, string Subfolder)[] TileZips =
+    {
+        ("TruckHub.WebMap.tiles.zip", "tiles"),
+        ("TruckHub.WebMap.ets2-tiles.zip", "ets2-tiles"),
+    };
 
     /// <summary>Extracts (or re-extracts, if the embedded content has changed since last time) the
     /// web assets and returns the folder they now live in.</summary>
@@ -86,18 +91,24 @@ public static class WebMapAssetExtractor
             resourceStream.CopyTo(fileStream);
         }
 
-        // The vector tiles are bundled separately as a single zip (see TruckHub.csproj) rather than
-        // ~92,000 individual manifest resources - unpack it into the same tiles\ folder the map
-        // style's tile URLs expect (https://truckhub.app/tiles/{z}/{x}/{y}.pbf).
-        using (var tilesZipStream = assembly.GetManifestResourceStream(TilesZipResourceName))
+        // The vector tiles are bundled separately as a single zip per game (see TruckHub.csproj)
+        // rather than individual manifest resources - unpack each into the folder its map style's
+        // tile URLs expect (https://truckhub.app/tiles/{z}/{x}/{y}.pbf, or ets2-tiles/... for the
+        // not-yet-active ETS2 profile - see GameMapProfile). Extracting both unconditionally, not
+        // just whichever game is active, keeps this method's signature simple (no game parameter
+        // needed) - the ETS2 entry just sits unused on disk until GameMapProfile.Ets2Enabled flips.
+        foreach (var (resourceName, subfolder) in TileZips)
         {
-            if (tilesZipStream != null)
+            using var tilesZipStream = assembly.GetManifestResourceStream(resourceName);
+            if (tilesZipStream == null)
             {
-                var tilesDir = Path.Combine(targetDir, "tiles");
-                Directory.CreateDirectory(tilesDir);
-                using var archive = new ZipArchive(tilesZipStream, ZipArchiveMode.Read);
-                archive.ExtractToDirectory(tilesDir);
+                continue;
             }
+
+            var tilesDir = Path.Combine(targetDir, subfolder);
+            Directory.CreateDirectory(tilesDir);
+            using var archive = new ZipArchive(tilesZipStream, ZipArchiveMode.Read);
+            archive.ExtractToDirectory(tilesDir);
         }
 
         File.WriteAllText(versionMarkerPath, currentVersion);

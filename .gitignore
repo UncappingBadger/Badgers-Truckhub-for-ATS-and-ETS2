@@ -1,3 +1,7 @@
 bin/
 obj/
 *.user
+_snapshots/
+backups/
+marketing/
+release_staging/

@@ -136,5 +136,79 @@ public sealed class TelemetrySnapshot
     /// calibration UI to know whether to offer splitter-range calibration at all.</summary>
     public uint SelectorCount { get; init; }
 
+    // --- EXT tab: extended instrumentation the main dash doesn't surface ---
+    // Raw values behind warning lights the main dash already shows as on/off booleans (WarnOilPressure
+    // etc. above) - those stay as-is, these are the actual gauge readings for a real analog display.
+    public float OilPressurePsi { get; init; }
+    public float OilTemperatureC { get; init; }
+    public float WaterTemperatureC { get; init; }
+    public float BatteryVoltage { get; init; }
+
+    /// <summary>Per-vehicle voltage below which the game's own low-battery warning activates - ATS
+    /// trucks run 12V electrical systems, ETS2 trucks run 24V, so this (not a fixed number) is what
+    /// the EXT battery gauge scales its dial range around, keeping the gauge correct across both.</summary>
+    public float BatteryVoltageWarnThreshold { get; init; }
+    public float BrakeAirPressurePsi { get; init; }
+    public float BrakeTemperatureC { get; init; }
+
+    /// <summary>Truck total lifetime odometer in km - distinct from PlannedDistanceKm/
+    /// NavigationDistanceMeters, which are per-job, not lifetime.</summary>
+    public float OdometerKm { get; init; }
+
+    // Wear <0;1> per accessory - 0 = undamaged.
+    public float EngineWear { get; init; }
+    public float TransmissionWear { get; init; }
+    public float CabinWear { get; init; }
+    public float ChassisWear { get; init; }
+    public float WheelsWearAvg { get; init; }
+
+    /// <summary>Vertical wheel-axis displacement in meters, one entry per truck wheel - the closest
+    /// proxy the SDK exposes for "how loaded is this axle" (more sag = more weight), not a calibrated
+    /// weight reading. Empty if no truck data (SDK inactive).</summary>
+    public float[] TruckSuspDeflection { get; init; } = Array.Empty<float>();
+
+    /// <summary>Which truck wheels belong to a liftable (tag/pusher) axle, and that axle's current
+    /// lift state <0;1> - lets the EXT suspension readout tell "this axle reads near-zero because
+    /// it's deliberately raised" apart from a genuinely flat/broken reading on a fixed axle.</summary>
+    public bool[] TruckWheelLiftable { get; init; } = Array.Empty<bool>();
+    public float[] TruckWheelLift { get; init; } = Array.Empty<float>();
+
+    /// <summary>Which truck wheels are driven/steered - the SDK's own classification, not something
+    /// the app infers from position. Combined with TruckWheelLiftable, this tells apart a fixed
+    /// (always-down) auxiliary "tag" axle - neither driven nor steered nor liftable - from the
+    /// ordinary steer/drive axles, so the EXT suspension readout can label an axle by what it
+    /// actually is instead of a plain wheel number. Not meaningful for a trailer (every trailer axle
+    /// is inherently neither driven nor steered), so this is truck-only.</summary>
+    public bool[] TruckWheelPowered { get; init; } = Array.Empty<bool>();
+    public bool[] TruckWheelSteerable { get; init; } = Array.Empty<bool>();
+
+    // --- Trailer (first attached trailer only - the SDK supports multi-trailer combos, but a single
+    // trailer is by far the common case and this only needs a instrument-cluster-style readout, not
+    // full doubles/triples support). All default to "no trailer" values when none is attached.
+    public bool TrailerAttached { get; init; }
+    public string TrailerName { get; init; } = "";
+
+    public float TrailerBodyWear { get; init; }
+    public float TrailerCargoWear { get; init; }
+    public float TrailerChassisWear { get; init; }
+    public float TrailerWheelsWear { get; init; }
+
+    public float[] TrailerSuspDeflection { get; init; } = Array.Empty<float>();
+
+    /// <summary>Per-wheel lift state <0;1> and ground contact for the trailer - the actual physical
+    /// axle state, distinct from TrailerLiftAxleUp/Indicator below (the tractor's own control/lamp for
+    /// commanding it).</summary>
+    public float[] TrailerWheelLift { get; init; } = Array.Empty<float>();
+    public bool[] TrailerWheelOnGround { get; init; } = Array.Empty<bool>();
+
+    /// <summary>Which trailer wheels belong to a liftable axle - same purpose as
+    /// TruckWheelLiftable above, for the trailer's own suspension readout.</summary>
+    public bool[] TrailerWheelLiftable { get; init; } = Array.Empty<bool>();
+
+    /// <summary>Tractor-side control state for the trailer's lift axle (mirrors LiftAxleUp/HasLiftAxle
+    /// above, which are the tractor's own axle).</summary>
+    public bool TrailerLiftAxleUp { get; init; }
+    public bool TrailerLiftAxleIndicatorOn { get; init; }
+
     public static TelemetrySnapshot Disconnected { get; } = new();
 }

@@ -259,7 +259,8 @@ public partial class GpsMapWindow : Window
                         }
                         else
                         {
-                            var url = await _coordinator.StartLanAsync();
+                            var useSsl = root.TryGetProperty("useSsl", out var useSslProp) && useSslProp.GetBoolean();
+                            var url = await _coordinator.StartLanAsync(useSsl);
                             PushLanStatus(url);
                         }
                     }
@@ -270,7 +271,13 @@ public partial class GpsMapWindow : Window
                 }
             };
 
-            MapWebView.CoreWebView2.Navigate("https://truckhub.app/index.html");
+            // Which game's tiles/mapdata folder the page should load - see gpsmap.js's own comment
+            // on why this has to arrive as a URL param rather than a postMessage sent after the
+            // page's already loaded. Read once, right now - if the game connects or changes after
+            // this window's already open, the page keeps using whatever it started with until
+            // reopened, same "not a live hot-swap" limitation GENERATION-Ets2.md already documents.
+            var gameParam = _viewModel.CurrentGame == SimGame.Ets2 ? "ets2" : "ats";
+            MapWebView.CoreWebView2.Navigate($"https://truckhub.app/index.html?game={gameParam}");
         }
         catch (Exception ex)
         {

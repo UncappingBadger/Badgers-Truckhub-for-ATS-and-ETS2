@@ -143,6 +143,13 @@
       }
     },
     {
+      "id": "route-line",
+      "type": "line",
+      "source": "route",
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#5FD85F", "line-width": 4, "line-opacity": 0.85 }
+    },
+    {
       "id": "road-signs",
       "type": "symbol",
       "source": "road-signs",
@@ -152,13 +159,6 @@
         "icon-size": ["interpolate", ["linear"], ["zoom"], 7, 0.7, 13, 1],
         "icon-allow-overlap": false
       }
-    },
-    {
-      "id": "route-line",
-      "type": "line",
-      "source": "route",
-      "layout": { "line-cap": "round", "line-join": "round" },
-      "paint": { "line-color": "#5FD85F", "line-width": 4, "line-opacity": 0.85 }
     }
   ]
 }

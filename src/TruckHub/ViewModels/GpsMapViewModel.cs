@@ -31,7 +31,17 @@ public sealed class GpsMapViewModel : IDisposable
     private double _lastKnownGameZ;
     private bool _hasKnownPosition;
 
+    // Whichever game the most recent supported snapshot came from - GameMapProfile.IsSupported
+    // means this is always Ats today (Ets2Enabled is false), but everything below already keys off
+    // this rather than assuming Ats, so flipping that one flag is the only change flipping the
+    // switch needs on the C# side.
+    private SimGame _activeGame = SimGame.Ats;
+
+    // Keyed by which game it was loaded for - a session could in principle see a game change
+    // mid-run (a different simulator launched), so a stale graph from the wrong game is never
+    // reused silently.
     private RoutingGraph? _routingGraph;
+    private SimGame _routingGraphGame;
 
     // Tracks only the job's own destination, independent of whatever route is currently displayed -
     // a manual pin (SetManualDestination) can override the display without disturbing this, so a
@@ -77,6 +87,14 @@ public sealed class GpsMapViewModel : IDisposable
 
     public IReadOnlyList<(double Lon, double Lat)> LastRoutePoints { get; private set; } = Array.Empty<(double, double)>();
 
+    /// <summary>Which game's map data the page should load - read fresh off the telemetry
+    /// service's own latest snapshot rather than this class's own _activeGame (which only updates
+    /// once a snapshot has actually been processed, so it'd default to Ats for the entire span
+    /// between this view model's construction and the first real snapshot). Consumed once, at
+    /// GpsMapWindow's Navigate() call and GpsCoordinator's LAN URL - see gpsmap.js's own
+    /// comment on why this can't be pushed over postMessage after the fact instead.</summary>
+    public SimGame CurrentGame => _telemetryService.LastSnapshot.Game;
+
     public GpsMapViewModel(TelemetryService telemetryService)
     {
         _telemetryService = telemetryService;
@@ -97,12 +115,15 @@ public sealed class GpsMapViewModel : IDisposable
                 + $"CityDestination='{snapshot.CityDestination}', CompanyDestination='{snapshot.CompanyDestination}'");
         }
 
-        // v1 is ATS-only - the map data was generated from the ATS world only (see
-        // GpsProjectionService), so an ETS2 position would project onto nonsense coordinates.
-        if (!snapshot.SdkActive || snapshot.Game != SimGame.Ats)
+        // Ats always supported; Ets2 only once GameMapProfile.Ets2Enabled is deliberately flipped on
+        // after live verification - see its own comment for why. A game this map data was never
+        // generated for would project positions onto nonsense coordinates.
+        if (!snapshot.SdkActive || !GameMapProfile.IsSupported(snapshot.Game))
         {
             return;
         }
+
+        _activeGame = snapshot.Game;
 
         var nowUtc = DateTime.UtcNow;
         if (nowUtc - _lastPushUtc < PushInterval)
@@ -115,8 +136,8 @@ public sealed class GpsMapViewModel : IDisposable
         _lastKnownGameZ = snapshot.PositionZ;
         _hasKnownPosition = true;
 
-        var (lon, lat) = GpsProjectionService.ToLonLat(snapshot.PositionX, snapshot.PositionZ);
-        var bearing = GpsProjectionService.HeadingToBearingDegrees(snapshot.HeadingUnit);
+        var (lon, lat) = GameMapProfile.ToLonLat(_activeGame, snapshot.PositionX, snapshot.PositionZ);
+        var bearing = GameMapProfile.HeadingToBearingDegrees(snapshot.HeadingUnit);
         var position = new GpsLivePosition(lon, lat, bearing, snapshot.SpeedKph);
         LastPosition = position;
         LivePositionUpdated?.Invoke(position);
@@ -263,7 +284,7 @@ public sealed class GpsMapViewModel : IDisposable
             return;
         }
 
-        var (destX, destZ) = GpsProjectionService.ToGameCoords(lon, lat);
+        var (destX, destZ) = GameMapProfile.ToGameCoords(_activeGame, lon, lat);
         var startX = _lastKnownGameX;
         var startZ = _lastKnownGameZ;
 
@@ -284,7 +305,8 @@ public sealed class GpsMapViewModel : IDisposable
         // caller needing to remember to set it themselves.
         _currentDestinationResolver = resolveDestination;
         _routeComputationInFlight = true;
-        Task.Run(() => ComputeRoute(startX, startZ, resolveDestination));
+        var game = _activeGame;
+        Task.Run(() => ComputeRoute(startX, startZ, resolveDestination, game));
     }
 
     /// <summary>Kicks off loading the routing graph in the background as soon as this view model
@@ -295,19 +317,32 @@ public sealed class GpsMapViewModel : IDisposable
     /// racing itself, never a crash (reference assignment, no torn state).</summary>
     public void PrewarmRoutingGraph()
     {
-        if (_routingGraph == null)
+        var game = _activeGame;
+        if (_routingGraph == null || _routingGraphGame != game)
         {
-            Task.Run(() => _routingGraph ??= RoutingGraph.Load());
+            Task.Run(() => LoadRoutingGraphIfNeeded(game));
         }
     }
 
-    private void ComputeRoute(double startX, double startZ, Func<RoutingGraph, int?> resolveDestination)
+    private void LoadRoutingGraphIfNeeded(SimGame game)
+    {
+        if (_routingGraph != null && _routingGraphGame == game)
+        {
+            return;
+        }
+
+        _routingGraph = GameMapProfile.LoadRoutingGraph(game);
+        _routingGraphGame = game;
+    }
+
+    private void ComputeRoute(double startX, double startZ, Func<RoutingGraph, int?> resolveDestination, SimGame game)
     {
         try
         {
             // Already running on a background thread - no need to hop to yet another one just to
             // load the graph.
-            var graph = _routingGraph ??= RoutingGraph.Load();
+            LoadRoutingGraphIfNeeded(game);
+            var graph = _routingGraph!;
 
             var destinationNode = resolveDestination(graph);
             if (destinationNode == null)
@@ -329,7 +364,7 @@ public sealed class GpsMapViewModel : IDisposable
             var richPoints = new List<(double X, double Z, double Lon, double Lat)>(path.Count);
             foreach (var nodeIndex in path)
             {
-                var (lon, lat) = GpsProjectionService.ToLonLat(graph.NodeX[nodeIndex], graph.NodeZ[nodeIndex]);
+                var (lon, lat) = GameMapProfile.ToLonLat(game, graph.NodeX[nodeIndex], graph.NodeZ[nodeIndex]);
                 richPoints.Add((graph.NodeX[nodeIndex], graph.NodeZ[nodeIndex], lon, lat));
             }
 

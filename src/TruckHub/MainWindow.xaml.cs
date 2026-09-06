@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private LogPanelState _logState = LogPanelState.Closed;
     private Views.LogWindow? _logWindow;
     private Views.GpsMapWindow? _gpsMapWindow;
+    private Views.ExtendedGaugesWindow? _extendedGaugesWindow;
     private readonly GpsCoordinator _gpsCoordinator;
 
     public MainWindow()
@@ -99,6 +100,7 @@ public partial class MainWindow : Window
             // A popped-out log is its own window - don't leave it orphaned once the main app closes.
             _logWindow?.Close();
             _gpsMapWindow?.Close();
+            _extendedGaugesWindow?.Close();
             // GpsMapWindow closing above only releases the coordinator's own "window is open" flag
             // - LAN Mode (if active) is deliberately designed to survive that. The whole app exiting
             // is the actual point everything really has to stop.
@@ -297,6 +299,23 @@ public partial class MainWindow : Window
         _gpsMapWindow = new Views.GpsMapWindow(_gpsCoordinator, left, top);
         _gpsMapWindow.Closed += (_, _) => _gpsMapWindow = null;
         _gpsMapWindow.Show();
+    }
+
+    private const double ExtendedGaugesWindowInitialWidth = 620;
+    private const double ExtendedGaugesWindowInitialHeight = 560;
+
+    private void ExtendedGauges_Click(object sender, RoutedEventArgs e)
+    {
+        if (_extendedGaugesWindow != null)
+        {
+            _extendedGaugesWindow.Activate();
+            return;
+        }
+
+        var (left, top) = ComputePopupPosition(ExtendedGaugesWindowInitialWidth, ExtendedGaugesWindowInitialHeight);
+        _extendedGaugesWindow = new Views.ExtendedGaugesWindow(_telemetryService, _settingsService, left, top);
+        _extendedGaugesWindow.Closed += (_, _) => _extendedGaugesWindow = null;
+        _extendedGaugesWindow.Show();
     }
 
     private (double left, double top) ComputePopupPosition(double popupWidth, double popupHeight)

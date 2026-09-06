@@ -58,6 +58,19 @@ public sealed class AppSettings
     public bool ShowAdBlue { get; set; } = true;
     public bool ShowWarnings { get; set; } = true;
     public bool ShowGameClock { get; set; } = true;
+    public bool ShowOdometer { get; set; } = true;
+
+    // EXT window (extended instruments) display toggles - same "off removes it, reflows" convention
+    // as the main dash's own toggles above.
+    public bool ShowExtOilPressure { get; set; } = true;
+    public bool ShowExtOilTemp { get; set; } = true;
+    public bool ShowExtWaterTemp { get; set; } = true;
+    public bool ShowExtBattery { get; set; } = true;
+    public bool ShowExtBrakeAir { get; set; } = true;
+    public bool ShowExtBrakeTemp { get; set; } = true;
+    public bool ShowExtSuspension { get; set; } = true;
+    public bool ShowExtTrailerAxleStatus { get; set; } = true;
+    public bool ShowExtWear { get; set; } = true;
 
     /// <summary>
     /// The game's rest-time telemetry field reads the same whether the fatigue simulation is off

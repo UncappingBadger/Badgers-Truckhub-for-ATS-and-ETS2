@@ -40,6 +40,8 @@ NODE_OPTIONS="--max-old-space-size=24576" npx tsx packages/clis/parser/index.ts 
 NODE_OPTIONS="--max-old-space-size=24576" npx tsx packages/clis/generator/index.ts map \
   -m usa -i out/parser -o out/tiles -t geojson
 
+node filter-orphaned-roads.mjs out/parser out/tiles/ats.geojson usa
+
 node --max-old-space-size=8192 tile-ats.mjs out/tiles/ats.geojson out/tiles/pbf
 ```
 
@@ -48,7 +50,31 @@ alongside the hand-written `index.html`/`gpsmap.js`/`style.json` and vendored `m
 
 ## Result
 
-183,566 GeoJSON features -> 91,859 tiles, 285MB uncompressed / ~82MB zipped.
+183,566 GeoJSON features -> (after orphaned-road filtering, see below) 167,417 -> 91,655 tiles,
+~82MB zipped.
+
+## Orphaned-road filtering (2026-09-01)
+
+After a real drive, the user flagged a road on the GPS map that didn't actually exist in-game.
+`truckermudgeon`'s own `generator map` command has zero connectivity filtering - it renders every
+road that isn't `hidden`/`secret`, whether or not it actually connects to anything. Separately,
+`build-route-graph.mjs` (see the sibling `Assets/RouteGraph/GENERATION.md`) already discovered the
+game's own road/prefab data breaks into ~16,000 disconnected components when treated as a graph -
+most of them tiny orphaned fragments (SCS's non-drivable decorative local-street fill inside city
+blocks, disconnected from the actual drivable network) - and prunes the *routing* graph down to just
+the single largest one. That pruning was never applied to the *visual* tiles, though, so exactly
+this kind of disconnected fragment could still get drawn on the map as an ordinary-looking road with
+no way to actually reach it - a very plausible match for "GPS shows a road that isn't really there."
+
+`filter-orphaned-roads.mjs` (new script, same `_devtools` folder) reruns the identical weak
+(undirected) union-find `build-route-graph.mjs` uses - roads and prefabs both link node uids
+together - directly against `usa-roads.json`/`usa-prefabs.json`, then drops any `type: "road"`
+feature from `ats.geojson` whose `startNodeUid`/`endNodeUid` aren't in the single largest component,
+before tiling. Confirmed: 16,149 of 119,012 road features (13.6%) were orphaned fragments - a
+sampled cluster near Davenport, IA (`us_tmpl01` local-road look, 56-node fragment, repeated many
+times across different towns) matches exactly the kind of decorative, disconnected city-interior
+filler road this was expected to catch. Run this step between the `generator map` command and
+`tile-ats.mjs` any time the pipeline is re-run.
 
 ## Re-running later (e.g. after a new ATS map DLC releases)
 

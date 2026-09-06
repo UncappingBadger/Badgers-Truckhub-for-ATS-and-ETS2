@@ -4,8 +4,9 @@
         xmlns:sys="clr-namespace:System.Windows.Controls;assembly=PresentationFramework"
         xmlns:conv="clr-namespace:TruckHub.Converters"
         xmlns:views="clr-namespace:TruckHub.Views"
-        Title="TruckHub (dev)"
-        Width="300" Height="330"
+        xmlns:controls="clr-namespace:TruckHub.Controls"
+        Title="TruckHub"
+        Width="300" Height="385"
         MinWidth="260" MinHeight="220"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -70,7 +71,7 @@
                                VerticalAlignment="Center" />
                     <TextBlock Text="By Badger" Foreground="#FFC24C" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
-                    <TextBlock Text="DEV" Foreground="#888888" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="v2.0" Foreground="#888888" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
 
@@ -445,6 +446,25 @@
                                 <TextBlock Text="{Binding UnitLabel}" Foreground="#888888" FontSize="11" FontWeight="Bold"
                                            VerticalAlignment="Bottom" Margin="4,0,0,3" />
                             </StackPanel>
+
+                            <!-- 90's mechanical ticker odometer, same spot a real cluster tucks it -
+                                 directly under the speedo. Bezel + inset-black housing around the
+                                 drum strip. Whole units only - no tenths drum. -->
+                            <StackPanel Visibility="{Binding OdometerVisibility}">
+                                <Border Background="#0A0A0A" BorderBrush="#3A3A3A" BorderThickness="1"
+                                        CornerRadius="3" Padding="4,3" Margin="0,6,0,0" HorizontalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitHundredThousands}" />
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitTenThousands}" />
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitThousands}" />
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitHundreds}" />
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitTens}" />
+                                        <controls:OdometerDigit Value="{Binding OdometerDigitOnes}" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding DistanceUnitLabel}" Foreground="#666666" FontSize="8" FontWeight="Bold"
+                                           HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -523,7 +543,17 @@
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="RPM" Foreground="#888888" FontSize="10" FontWeight="Bold"
                                        HorizontalAlignment="Center" />
-                            <Canvas Width="140" Height="84" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <!-- Scaled up from the original 140x84 (same artwork as Speed's own dial,
+                                 just bigger) via Viewbox rather than hand-recomputing every arc/tick
+                                 coordinate for a larger dial - a plain uniform stretch of the existing
+                                 hand-tuned geometry. Kept within the 185px column's own width budget
+                                 (185 - the Border's 20px of horizontal padding) so this box doesn't
+                                 end up visibly wider than Fuel/Cruise/Gear below it - the remaining
+                                 gap from the odometer's height is closed by a small Cruise/Gear box
+                                 height bump instead, rather than distorting this dial's aspect ratio
+                                 or growing the whole column wider to force an exact height match. -->
+                            <Viewbox Width="163" Height="98" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="140" Height="84">
                                 <Path Data="M 24.70,71.99 A 46,46 0 1 1 115.30,71.99" Stroke="#3A3A3A" StrokeThickness="4"
                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                 <Path Data="M 113.20,48.30 A 46,46 0 0 1 115.30,71.99" Stroke="#FF4C4C" StrokeThickness="4"
@@ -548,6 +578,7 @@
                                 </Line>
                                 <Ellipse Canvas.Left="64" Canvas.Top="58" Width="12" Height="12" Fill="#888888" />
                             </Canvas>
+                            </Viewbox>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
                                 <TextBlock Text="{Binding RpmDisplay}" Foreground="{Binding RpmColor}" FontSize="20" FontWeight="Bold" />
                                 <TextBlock Text="RPM" Foreground="#888888" FontSize="11" FontWeight="Bold"
@@ -557,9 +588,13 @@
                     </Border>
 
                     <!-- Height bumped to roughly match the Fuel gauge box on the left, so both
-                         columns' bottom edges line up instead of Fuel visibly running taller. -->
+                         columns' bottom edges line up instead of Fuel visibly running taller - bumped
+                         again (102->140) once the odometer made Speed's own column taller, on top of
+                         the RPM dial above also growing a bit (see its own Viewbox comment) to split
+                         the difference between "bigger gauge" and "matching padding" instead of
+                         relying on either alone. -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
-                        <Border Background="#202020" CornerRadius="6" Width="87" Height="102"
+                        <Border Background="#202020" CornerRadius="6" Width="87" Height="140"
                                 Visibility="{Binding CruiseControlVisibility}">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Viewbox Width="27" Height="27" HorizontalAlignment="Center">
@@ -577,7 +612,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Background="#202020" CornerRadius="6" Width="87" Height="102" Margin="11,0,0,0"
+                        <Border Background="#202020" CornerRadius="6" Width="87" Height="140" Margin="11,0,0,0"
                                 Visibility="{Binding GearRpmSectionVisibility}">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="GEAR" Foreground="#888888" FontSize="11" FontWeight="Bold"
@@ -726,11 +761,17 @@
                     Padding="0" Cursor="Hand" ToolTip="Live GPS map">
                 <TextBlock TextAlignment="Center" LineStackingStrategy="BlockLineHeight" LineHeight="13">G<LineBreak />P<LineBreak />S</TextBlock>
             </Button>
-            <Button x:Name="LogToggleButton" Click="ToggleLog_Click"
+            <Button x:Name="LogToggleButton" Click="ToggleLog_Click" Margin="0,0,0,4"
                     Width="18" Height="42" FontSize="10" FontWeight="Bold"
                     Background="#E6161616" Foreground="#AAAAAA" BorderBrush="#404040" BorderThickness="0,1,1,1"
                     Padding="0" Cursor="Hand" ToolTip="Job log">
                 <TextBlock TextAlignment="Center" LineStackingStrategy="BlockLineHeight" LineHeight="13">L<LineBreak />O<LineBreak />G</TextBlock>
+            </Button>
+            <Button Click="ExtendedGauges_Click"
+                    Width="18" Height="42" FontSize="10" FontWeight="Bold"
+                    Background="#E6161616" Foreground="#AAAAAA" BorderBrush="#404040" BorderThickness="0,1,1,1"
+                    Padding="0" Cursor="Hand" ToolTip="Extended instruments">
+                <TextBlock TextAlignment="Center" LineStackingStrategy="BlockLineHeight" LineHeight="13">E<LineBreak />X<LineBreak />T</TextBlock>
             </Button>
         </StackPanel>
 

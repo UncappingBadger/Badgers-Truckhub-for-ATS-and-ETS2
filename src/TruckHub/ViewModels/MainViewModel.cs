@@ -223,6 +223,29 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // of computing the angle directly - same eased-sweep treatment applied to the dial gauges.
     public double SpeedNeedleAngle => WideGaugeAngle(_speedFractionSmoothed);
 
+    // 90's-style mechanical ticker odometer, under the speed dial. Distance in tenths of the display
+    // unit (km or mi, matching UseMetric same as everywhere else) - the smallest digit shown is
+    // tenths, so tracking in tenths-of-a-unit makes every digit place a plain "divide and mod 10"
+    // read, no separate fractional-carry bookkeeping needed.
+    //
+    // Every digit is Math.Floor'd to a clean whole 0-9 - a continuous fractional value was tried
+    // first (closer to how a fully mechanical gear-train odometer actually moves) but confirmed live
+    // to render as a blended, unreadable overlap between two digits at almost any random moment.
+    // OdometerDigit flashes a brief "tick" itself whenever the value it's bound to actually changes,
+    // so the visible ticking comes from there, not from faking continuous motion in the underlying
+    // value. Whole units only (no tenths drum) - the fractional mile/km isn't meaningful here.
+    public Visibility OdometerVisibility =>
+        !_settings.ShowOdometer ? Visibility.Collapsed
+        : IsConnected ? Visibility.Visible : Visibility.Hidden;
+
+    private double OdometerUnits => Math.Floor(_settings.UseMetric ? _snapshot.OdometerKm : _snapshot.OdometerKm * KmToMiles);
+    public double OdometerDigitOnes => OdometerUnits % 10.0;
+    public double OdometerDigitTens => Math.Floor(OdometerUnits / 10.0) % 10.0;
+    public double OdometerDigitHundreds => Math.Floor(OdometerUnits / 100.0) % 10.0;
+    public double OdometerDigitThousands => Math.Floor(OdometerUnits / 1000.0) % 10.0;
+    public double OdometerDigitTenThousands => Math.Floor(OdometerUnits / 10000.0) % 10.0;
+    public double OdometerDigitHundredThousands => Math.Floor(OdometerUnits / 100000.0) % 10.0;
+
     private double TargetSpeedFraction() => Math.Clamp(SpeedValue / SpeedGaugeReferenceMax, 0.0, 1.0);
 
     public bool CruiseControlActive => _snapshot.SdkActive && _snapshot.CruiseControlOn;
@@ -844,6 +867,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         NotifyIfChanged(nameof(ShowAmericanSpeedSign), ShowAmericanSpeedSign);
         NotifyIfChanged(nameof(ShowEuropeanSpeedSign), ShowEuropeanSpeedSign);
         NotifyIfChanged(nameof(SpeedValue), SpeedValue);
+        NotifyIfChanged(nameof(OdometerVisibility), OdometerVisibility);
+        NotifyIfChanged(nameof(OdometerDigitOnes), OdometerDigitOnes);
+        NotifyIfChanged(nameof(OdometerDigitTens), OdometerDigitTens);
+        NotifyIfChanged(nameof(OdometerDigitHundreds), OdometerDigitHundreds);
+        NotifyIfChanged(nameof(OdometerDigitThousands), OdometerDigitThousands);
+        NotifyIfChanged(nameof(OdometerDigitTenThousands), OdometerDigitTenThousands);
+        NotifyIfChanged(nameof(OdometerDigitHundredThousands), OdometerDigitHundredThousands);
         NotifyIfChanged(nameof(CurrencySymbol), CurrencySymbol);
         NotifyIfChanged(nameof(IncomeDisplay), IncomeDisplay);
         NotifyIfChanged(nameof(RouteDisplay), RouteDisplay);

@@ -18,12 +18,33 @@ using TruckHub.Models;
 
 namespace TruckHub.Services;
 
-/// <summary>Minimal, hand-rolled GET-only HTTPS/1.1 server so another device on the same LAN (a
-/// phone/tablet) can view the live GPS map in a plain browser - "LAN Mode", toggled from
-/// GpsMapWindow. Ported from ZoidHub's own LanShareServer (same file structure/security posture,
-/// see its own comment for the full reasoning on TcpListener-not-HttpListener and the self-signed
-/// cert), extended with two live-data endpoints ZoidHub's version doesn't have at all (it only ever
-/// served static markers) - TruckHub's whole point is showing the truck moving in real time.
+/// <summary>Minimal, hand-rolled GET-only HTTP/1.1 (or HTTPS/1.1) server so another device on the
+/// same LAN (a phone/tablet) can view the live GPS map in a plain browser - "LAN Mode", toggled from
+/// GpsMapWindow. Ported from ZoidHub's own LanShareServer (same file structure/reasoning, see its
+/// own comment for why TcpListener over System.Net.HttpListener), extended with two live-data
+/// endpoints ZoidHub's version doesn't have at all (it only ever served static markers) - TruckHub's
+/// whole point is showing the truck moving in real time.
+///
+/// SSL is opt-in per launch, chosen by the user in the LAN prompt right before starting (see
+/// GpsMapWindow's "toggleLan" handler) - Apple devices should always pick plain HTTP. A self-signed
+/// cert was live-tested against a real iPhone and failed with a generic "network connection was
+/// lost" right after the user clicked through the "not secure" warning. First suspected cause (and a
+/// real bug, fixed regardless): Apple enforces a hard 825-day maximum TLS certificate lifetime
+/// (since ~2020) that applies even to self-signed leaf certs with no CA chain, and WebKit's TLS
+/// stack rejects an over-long one below the layer where Safari can show a clear error. Fixing that
+/// (cert now kept safely under 800 days) did NOT resolve it, though - re-tested live and got the
+/// identical error. Root cause investigated further via `openssl`/`curl` against this server
+/// directly: the handshake itself is clean (TLS 1.3, TLS_AES_256_GCM_SHA384), but the server
+/// (`SslStream` over Windows' SChannel) triggers a mid-connection renegotiation on every request,
+/// right after the client's GET is read - invisible to curl/openssl on this same Windows machine
+/// (also SChannel-based, so it just goes along with it), but TLS 1.3 doesn't support renegotiation
+/// at all per spec, and Safari/WebKit's own (non-SChannel) TLS stack very plausibly refuses it and
+/// drops the connection - exactly matching the symptom. Not pursued further: the exact trigger
+/// inside SslStream's request-handling would need real investigation with no guaranteed clean fix,
+/// and "No SSL" already fully solves the actual need (Apple device support) - accepted as a known
+/// limitation of the opt-in HTTPS path rather than chased further. Non-Apple users who'd rather have
+/// the connection encrypted can still opt in - same choice ZoidHub v1.1 vs v1.1.1 ended up offering
+/// as two separate downloads; here it's just a runtime choice instead of two builds.
 ///
 /// Deliberately not System.Net.HttpListener: binding that to anything other than localhost
 /// normally requires either admin rights or a one-time `netsh http add urlacl` reservation (it's
@@ -42,9 +63,11 @@ public sealed class GpsLanServer
     private readonly string _webMapDir;
     private readonly Func<GpsLivePosition?> _getPosition;
     private readonly Func<IReadOnlyList<(double Lon, double Lat)>> _getRoutePoints;
+    private readonly Func<string> _getActiveGame;
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private X509Certificate2? _certificate;
+    private bool _useSsl;
 
     public int Port { get; }
 
@@ -52,21 +75,26 @@ public sealed class GpsLanServer
         string webMapDir,
         Func<GpsLivePosition?> getPosition,
         Func<IReadOnlyList<(double Lon, double Lat)>> getRoutePoints,
+        Func<string> getActiveGame,
         int port = 41414)
     {
         _webMapDir = webMapDir;
         _getPosition = getPosition;
         _getRoutePoints = getRoutePoints;
+        _getActiveGame = getActiveGame;
         Port = port;
     }
 
-    public void Start()
+    public void Start(bool useSsl)
     {
-        _certificate = GetOrCreateCertificate();
+        _useSsl = useSsl;
+        _certificate = useSsl ? GetOrCreateCertificate() : null;
         _cts = new CancellationTokenSource();
         _listener = new TcpListener(IPAddress.Any, Port);
         _listener.Start();
-        AppLogger.Log($"GpsLanServer: listening on port {Port} (HTTPS, self-signed cert expires {_certificate.NotAfter:yyyy-MM-dd}).");
+        AppLogger.Log(useSsl
+            ? $"GpsLanServer: listening on port {Port} (HTTPS, self-signed cert expires {_certificate!.NotAfter:yyyy-MM-dd})."
+            : $"GpsLanServer: listening on port {Port} (HTTP).");
         _ = AcceptLoopAsync(_cts.Token);
     }
 
@@ -110,12 +138,18 @@ public sealed class GpsLanServer
             try
             {
                 using var networkStream = client.GetStream();
-                using var stream = new SslStream(networkStream, leaveInnerStreamOpen: false);
-                // SslProtocols.None lets the OS/.NET negotiate the best protocol both sides
-                // support, rather than pinning to a specific TLS version by hand - the current
-                // recommended approach rather than a maintenance liability as TLS versions age.
-                await stream.AuthenticateAsServerAsync(_certificate!, clientCertificateRequired: false,
-                    enabledSslProtocols: SslProtocols.None, checkCertificateRevocation: false);
+                using Stream stream = _useSsl
+                    ? new SslStream(networkStream, leaveInnerStreamOpen: false)
+                    : networkStream;
+
+                if (stream is SslStream sslStream)
+                {
+                    // SslProtocols.None lets the OS/.NET negotiate the best protocol both sides
+                    // support, rather than pinning to a specific TLS version by hand - the current
+                    // recommended approach rather than a maintenance liability as TLS versions age.
+                    await sslStream.AuthenticateAsServerAsync(_certificate!, clientCertificateRequired: false,
+                        enabledSslProtocols: SslProtocols.None, checkCertificateRevocation: false);
+                }
 
                 var requestLine = await ReadLineAsync(stream, ct);
                 if (string.IsNullOrEmpty(requestLine)) return;
@@ -179,6 +213,17 @@ public sealed class GpsLanServer
                     bearing = position.BearingDegrees,
                     speedKph = position.SpeedKph,
                 }, JsonOptions);
+            await WriteResponseAsync(stream, 200, "OK", "application/json", Encoding.UTF8.GetBytes(json), ct,
+                cacheControl: "no-store");
+            return;
+        }
+
+        if (path == "/api/game")
+        {
+            // Read once at page load (see gpsmap.js's resolveActiveGame()) to decide which
+            // tiles/mapdata folder to fetch from - not polled repeatedly like position/route,
+            // since which game is running doesn't change mid-page-load the way position does.
+            var json = JsonSerializer.Serialize(new { game = _getActiveGame() }, JsonOptions);
             await WriteResponseAsync(stream, 200, "OK", "application/json", Encoding.UTF8.GetBytes(json), ct,
                 cacheControl: "no-store");
             return;
@@ -301,10 +346,10 @@ public sealed class GpsLanServer
         req.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
 
-        // 10-year validity - this is a private, self-signed cert with no CA chain to worry about
-        // rotating; the goal is "don't make the user re-approve a new one every so often", not
-        // short-lived-cert hygiene that matters for publicly-trusted certificates.
-        using var generated = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddYears(10));
+        // 800-day validity, comfortably under Apple's 825-day hard cap on TLS certificate lifetime
+        // (see the class-level comment) - not "as long as possible so the user never has to
+        // re-approve it", which is what caused the original bug this limit fixes.
+        using var generated = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddDays(800));
         var exportable = new X509Certificate2(generated.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
 
         Directory.CreateDirectory(Path.GetDirectoryName(certPath)!);

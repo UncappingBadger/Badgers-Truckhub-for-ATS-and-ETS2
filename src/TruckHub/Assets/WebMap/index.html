@@ -50,11 +50,58 @@
     user-select: text;
   }
   #lan-status.visible { display: block; }
+
+  #lan-ssl-prompt {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.6);
+    font-family: system-ui, sans-serif;
+  }
+  #lan-ssl-prompt.visible { display: flex; }
+  #lan-ssl-prompt .card {
+    width: 280px;
+    background: #1e1e1e;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    padding: 16px 18px;
+    color: #ccc;
+  }
+  #lan-ssl-prompt h3 { margin: 0 0 8px; font-size: 14px; color: #FFC24C; }
+  #lan-ssl-prompt p { margin: 0 0 14px; font-size: 12px; line-height: 1.4; color: #999; }
+  #lan-ssl-prompt .choices { display: flex; flex-direction: column; gap: 8px; }
+  #lan-ssl-prompt button {
+    background: rgba(22,22,22,0.85);
+    color: #ccc;
+    border: 1px solid #404040;
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  #lan-ssl-prompt button:hover { background: rgba(40,40,40,0.9); }
+  #lan-ssl-prompt button.recommended { border-color: #FFC24C; color: #FFC24C; }
+  #lan-ssl-prompt button span { display: block; font-weight: 400; font-size: 11px; color: #888; margin-top: 2px; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="lan-status"></div>
+<div id="lan-ssl-prompt">
+  <div class="card">
+    <h3>Enable LAN Mode</h3>
+    <p>View this map from another device on your network. Apple device users (iPhone, iPad, Mac) should pick "No SSL" - Safari doesn't get along with the self-signed certificate SSL would need here.</p>
+    <div class="choices">
+      <button id="lan-no-ssl-btn" type="button" class="recommended">No SSL<span>Recommended - works everywhere, including Apple devices</span></button>
+      <button id="lan-use-ssl-btn" type="button">Use SSL<span>Encrypted connection - not Apple-device-friendly</span></button>
+    </div>
+  </div>
+</div>
 <div id="hud-buttons">
   <button id="follow-btn" type="button">Follow</button>
   <button id="pin-btn" type="button">Pin</button>

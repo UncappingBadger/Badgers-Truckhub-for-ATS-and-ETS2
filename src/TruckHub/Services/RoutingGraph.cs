@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text.Json;
+using TruckHub.Models;
 
 namespace TruckHub.Services;
 
@@ -37,7 +38,11 @@ public sealed record CompanyDestination(string CityToken, string CompanyToken, i
 /// </summary>
 public sealed class RoutingGraph
 {
-    private const string ResourceName = "TruckHub.RouteGraph.route-graph.zip";
+    private const string AtsResourceName = "TruckHub.RouteGraph.route-graph.zip";
+
+    // Not yet used by any live code path - see GameMapProfile. Embedded now so the data exists,
+    // read here so loading it is a one-line change once GameMapProfile.Ets2Enabled flips to true.
+    private const string Ets2ResourceName = "TruckHub.RouteGraph.ets2-route-graph.zip";
 
     public float[] NodeX { get; }
     public float[] NodeZ { get; }
@@ -52,11 +57,15 @@ public sealed class RoutingGraph
         Companies = companies;
     }
 
-    public static RoutingGraph Load()
+    /// <summary>Loads the graph for the given game - defaults to ATS, the only profile any live code
+    /// path actually requests today (see GameMapProfile). Ets2 is loadable here (for standalone
+    /// sanity-checking) even while GameMapProfile.Ets2Enabled is false.</summary>
+    public static RoutingGraph Load(SimGame game = SimGame.Ats)
     {
+        var resourceName = game == SimGame.Ets2 ? Ets2ResourceName : AtsResourceName;
         var assembly = Assembly.GetExecutingAssembly();
-        using var zipStream = assembly.GetManifestResourceStream(ResourceName)
-            ?? throw new InvalidOperationException($"Embedded resource '{ResourceName}' not found.");
+        using var zipStream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
 
         var nodesBytes = ReadEntry(archive, "nodes.bin");

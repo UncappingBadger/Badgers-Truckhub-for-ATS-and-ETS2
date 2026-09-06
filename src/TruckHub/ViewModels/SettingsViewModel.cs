@@ -484,6 +484,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         set { _settings.ShowGameClock = value; _settingsService.Save(_settings); OnPropertyChanged(); }
     }
 
+    public bool ShowOdometer
+    {
+        get => _settings.ShowOdometer;
+        set { _settings.ShowOdometer = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
     public bool FatigueSimulationEnabled
     {
         get => _settings.FatigueSimulationEnabled;

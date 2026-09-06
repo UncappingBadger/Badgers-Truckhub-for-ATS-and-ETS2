@@ -38,7 +38,7 @@
          relative path (mixed \/ separators from %(RecursiveDir) are fine - WebMapAssetExtractor
          normalizes them, nothing else ever parses these names). -->
     <None Remove="Assets\WebMap\**" />
-    <EmbeddedResource Include="Assets\WebMap\**" Exclude="Assets\WebMap\tiles.zip">
+    <EmbeddedResource Include="Assets\WebMap\**" Exclude="Assets\WebMap\tiles.zip;Assets\WebMap\ets2-tiles.zip">
       <LogicalName>TruckHub.WebMap/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
 
@@ -50,6 +50,15 @@
       <LogicalName>TruckHub.WebMap.tiles.zip</LogicalName>
     </EmbeddedResource>
 
+    <!-- ETS2's counterpart to the two ATS entries above (tiles.zip / route-graph.zip) - same
+         reasoning, generated the same way (see Assets\WebMap\GENERATION-Ets2.md). Embedded so the
+         data exists and WebMapAssetExtractor picks it up automatically, but NOT yet wired into any
+         live code path - GameMapProfile.Ets2Enabled is false, so this never gets read at runtime
+         until that's deliberately flipped on. -->
+    <EmbeddedResource Include="Assets\WebMap\ets2-tiles.zip">
+      <LogicalName>TruckHub.WebMap.ets2-tiles.zip</LogicalName>
+    </EmbeddedResource>
+
     <!-- Routable road-network graph (see Assets\RouteGraph\GENERATION.md) - built directly from
          truckermudgeon/maps' parser output, not from any GPL code. Only extracted/loaded when a
          route is actually needed (an active job with a known destination), separate from the
@@ -57,6 +66,13 @@
     <None Remove="Assets\RouteGraph\route-graph.zip" />
     <EmbeddedResource Include="Assets\RouteGraph\route-graph.zip">
       <LogicalName>TruckHub.RouteGraph.route-graph.zip</LogicalName>
+    </EmbeddedResource>
+
+    <!-- ETS2's counterpart - see the ets2-tiles.zip comment above, same "embedded but dormant"
+         status. -->
+    <None Remove="Assets\RouteGraph\ets2-route-graph.zip" />
+    <EmbeddedResource Include="Assets\RouteGraph\ets2-route-graph.zip">
+      <LogicalName>TruckHub.RouteGraph.ets2-route-graph.zip</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

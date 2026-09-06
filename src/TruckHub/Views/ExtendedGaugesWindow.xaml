@@ -1,0 +1,549 @@
+<Window x:Class="TruckHub.Views.ExtendedGaugesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:sys="clr-namespace:System.Windows.Controls;assembly=PresentationFramework"
+        xmlns:conv="clr-namespace:TruckHub.Converters"
+        Title="TruckHub - Extended Instruments"
+        Width="883" Height="829"
+        MinWidth="420" MinHeight="360"
+        ResizeMode="CanResize"
+        WindowStyle="None"
+        Background="#161616">
+
+    <!-- Same WindowChrome approach as LogWindow (not MainWindow's AllowsTransparency style) - real
+         native resize-from-any-edge for free, and avoids AllowsTransparency's own GPU-compositing
+         weakness under heavy system load (see reference_wpf_gpu_render_glitch_truckhub memory) for
+         a window that has no need for per-pixel transparency in the first place. -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <conv:FractionToStarWidthConverter x:Key="FracToStar" />
+        <conv:FractionToSegmentLitConverter x:Key="SegmentLit" SegmentCount="6" />
+        <sys:BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- Shared half-dial gauge geometry (arc/ticks/pivot), same design as the main window's Fuel
+             gauge - only the labels/bindings differ per instance below. -->
+        <Style x:Key="GaugeTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888888" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="GaugeTickLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#666666" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+
+        <!-- Segmented bar (6 discrete cells, filled bottom-up) - same visual language as MainWindow's
+             AdBlue gauge (see its own comment on why a discrete segmented bar over a solid fill),
+             generalized via FractionToSegmentLitConverter since this drives a dynamically-sized
+             per-wheel list rather than one fixed gauge. Each cell is a dim outer Border always
+             rendered at full size with a green inner Border toggling Visible/Collapsed - same
+             nesting AdBlue uses - so unlit cells still hold their slot instead of the whole bar
+             collapsing shorter. -->
+        <DataTemplate x:Key="WheelDeflectionTemplate">
+            <StackPanel Margin="6,0">
+                <Border Background="#161616" CornerRadius="4" Padding="3">
+                    <StackPanel>
+                        <Border Height="16" Margin="0,0,0,2" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=6}" />
+                        </Border>
+                        <Border Height="16" Margin="0,0,0,2" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=5}" />
+                        </Border>
+                        <Border Height="16" Margin="0,0,0,2" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=4}" />
+                        </Border>
+                        <Border Height="16" Margin="0,0,0,2" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=3}" />
+                        </Border>
+                        <Border Height="16" Margin="0,0,0,2" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=2}" />
+                        </Border>
+                        <Border Height="16" Background="#3A3A3A" CornerRadius="2">
+                            <Border Background="#5FD85F" CornerRadius="2" Margin="2"
+                                    Visibility="{Binding FillHeight, Converter={StaticResource SegmentLit}, ConverterParameter=1}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="{Binding Label}" Foreground="{Binding LabelColor}" FontSize="12" FontWeight="Bold"
+                           HorizontalAlignment="Center" Margin="0,5,0,0" />
+                <TextBlock Text="{Binding DisplayValue}" Foreground="{Binding ValueColor}" FontSize="17" FontWeight="Bold"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="TrailerAxleTemplate">
+            <Border Background="#202020" CornerRadius="4" Padding="12,8" Margin="0,0,8,8">
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding Label}" Foreground="#999999" FontSize="11" FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding StateText}" Foreground="{Binding StateColor}" FontSize="18"
+                               FontWeight="Bold" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Background="#202020" Height="28" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="TRUCKHUB · EXT" Foreground="#888888" FontSize="11"
+                       FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+            <Button Grid.Column="1" Content="⚙" Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Width="20" Height="20" Padding="0" Margin="0,0,6,0" FontSize="11" Background="#2A2A2A"
+                    Foreground="#AAAAAA" BorderThickness="0" ToolTip="EXT display settings" />
+
+            <Button Grid.Column="2" Content="✕" Click="Close_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                    Width="28" Height="28" FontSize="10" Background="Transparent"
+                    Foreground="White" BorderThickness="0" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <!-- Same "no info until a game's actually detected" behavior as the main window, rather
+                 than a wall of zeroed-out gauges before anything's connected. -->
+            <TextBlock Text="{Binding StatusMessage}" Foreground="#999999" FontSize="13"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"
+                       TextAlignment="Center" Visibility="{Binding IsDisconnected, Converter={StaticResource BoolToVis}}" />
+
+            <!-- Viewbox instead of a ScrollViewer: the whole panel scales to fit whatever size the
+                 (still freely resizable, ResizeMode=CanResize above) window currently is, same
+                 "autoscale but the user can resize to taste" behavior MainWindow already uses,
+                 rather than ever needing a scrollbar. -->
+            <Viewbox Stretch="Uniform" Margin="14,12,14,14"
+                     Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+
+                <!-- The six analog gauges the main dash doesn't show - kept at the top per explicit
+                     request, with wear/suspension/axle-status reordered below. -->
+                <WrapPanel HorizontalAlignment="Center">
+
+                    <!-- Oil Pressure -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding OilPressureVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="OIL PRESSURE" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="0" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="100" Canvas.Left="90" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding OilPressureColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding OilPressureNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding OilPressureDisplay}" Foreground="{Binding OilPressureColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text=" psi" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Oil Temperature -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding OilTempVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="OIL TEMP" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Path Data="M 86.85,30.5 A 38,38 0 0 1 92.90,27" Stroke="#FF4C4C" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="C" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="H" Canvas.Left="94" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding OilTempColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding OilTempNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding OilTempDisplay}" Foreground="{Binding OilTempColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text="°C" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Water Temperature -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding WaterTempVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="WATER TEMP" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Path Data="M 86.85,30.5 A 38,38 0 0 1 92.90,27" Stroke="#FF4C4C" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="C" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="H" Canvas.Left="94" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding WaterTempColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding WaterTempNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding WaterTempDisplay}" Foreground="{Binding WaterTempColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text="°C" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Battery Voltage -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding BatteryVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="BATTERY" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 33.13,19.13" Stroke="#FF4C4C" StrokeThickness="4"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Flat" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="L" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="H" Canvas.Left="94" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding BatteryColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding BatteryNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding BatteryDisplay}" Foreground="{Binding BatteryColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text="V" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Brake Air Pressure -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding BrakeAirVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="BRAKE AIR" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 33.13,19.13" Stroke="#FF4C4C" StrokeThickness="4"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Flat" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="0" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="150" Canvas.Left="88" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding BrakeAirColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding BrakeAirNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding BrakeAirDisplay}" Foreground="{Binding BrakeAirColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text=" psi" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Brake Temperature -->
+                    <Border Background="#202020" CornerRadius="6" Padding="12,9" Margin="0,0,10,10"
+                            Visibility="{Binding BrakeTempVisibility}">
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock Text="BRAKE TEMP" Style="{StaticResource GaugeTitle}" />
+                            <Viewbox Width="150" Height="87.5" HorizontalAlignment="Center" Margin="0,2,0,0">
+                            <Canvas Width="120" Height="70">
+                                <Path Data="M 27.10,27 A 38,38 0 0 1 92.90,27" Stroke="#3A3A3A" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Path Data="M 86.85,30.5 A 38,38 0 0 1 92.90,27" Stroke="#FF4C4C" StrokeThickness="4"
+                                      StrokeStartLineCap="Flat" StrokeEndLineCap="Round" />
+                                <Line X1="27.10" Y1="27" X2="33.15" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="60" Y1="8" X2="60" Y2="15" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <Line X1="92.90" Y1="27" X2="86.85" Y2="30.5" Stroke="#3A3A3A" StrokeThickness="3" />
+                                <TextBlock Text="C" Canvas.Left="14" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <TextBlock Text="H" Canvas.Left="94" Canvas.Top="26" Style="{StaticResource GaugeTickLabel}" />
+                                <Line X1="60" Y1="46" X2="60" Y2="13" Stroke="{Binding BrakeTempColor}" StrokeThickness="3.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Line.RenderTransform>
+                                        <RotateTransform Angle="{Binding BrakeTempNeedleAngle}" CenterX="60" CenterY="46" />
+                                    </Line.RenderTransform>
+                                </Line>
+                                <Ellipse Canvas.Left="55" Canvas.Top="41" Width="10" Height="10" Fill="#888888" />
+                            </Canvas>
+                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding BrakeTempDisplay}" Foreground="{Binding BrakeTempColor}" FontSize="21" FontWeight="Bold" />
+                                <TextBlock Text="°C" Foreground="#888888" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </WrapPanel>
+
+                <!-- Suspension deflection - truck and trailer together, clearly labeled which is
+                     which, rather than trailer's copy being buried inside the trailer status border
+                     further down. Closest proxy the SDK exposes to per-axle loading - see
+                     ExtendedGaugesViewModel's own comment on why it's approximate, not a calibrated
+                     weight reading. -->
+                <Border Background="#202020" CornerRadius="6" Padding="14,12" Margin="0,0,0,10"
+                        Visibility="{Binding SuspensionVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="SUSPENSION DEFLECTION" Foreground="#999999" FontSize="12" FontWeight="Bold" Margin="0,0,0,10" />
+
+                        <TextBlock Text="TRUCK" Foreground="#777777" FontSize="11" FontWeight="Bold" Margin="0,0,0,6" />
+                        <!-- UniformGrid with Rows=1 (not WrapPanel) - Columns auto-computes to the
+                             child count, and every cell is forced to equal width = the full
+                             available width / column count, so the row of bars always spans edge to
+                             edge of the section instead of clumping to the left with the rest of a
+                             wide window left blank. -->
+                        <ItemsControl ItemsSource="{Binding TruckWheelDeflections}" ItemTemplate="{StaticResource WheelDeflectionTemplate}"
+                                      HorizontalContentAlignment="Stretch">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+
+                        <StackPanel Visibility="{Binding HasTrailer, Converter={StaticResource BoolToVis}}" Margin="0,14,0,0">
+                            <TextBlock Text="TRAILER" Foreground="#777777" FontSize="11" FontWeight="Bold" Margin="0,0,0,6" />
+                            <ItemsControl ItemsSource="{Binding TrailerWheelDeflections}" ItemTemplate="{StaticResource WheelDeflectionTemplate}"
+                                          HorizontalContentAlignment="Stretch">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Trailer axle status - real per-wheel lift/ground state, plus the tractor's own
+                     single lift-axle control/lamp for it (a separate reading - see
+                     ExtendedGaugesViewModel's own comment on TrailerLiftAxleControlText). -->
+                <Border Background="#202020" CornerRadius="6" Padding="12,10" Margin="0,0,0,10"
+                        Visibility="{Binding TrailerAxleStatusVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding TrailerHeaderText}" Foreground="#888888" FontSize="10" FontWeight="Bold" Margin="0,0,0,6" />
+
+                        <StackPanel Visibility="{Binding HasTrailer, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding TrailerAxles}" ItemTemplate="{StaticResource TrailerAxleTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <Border Background="#161616" CornerRadius="4" Padding="8,7" Margin="0,10,0,0">
+                                <TextBlock Text="{Binding TrailerLiftAxleControlText}" Foreground="{Binding TrailerLiftAxleControlColor}"
+                                           FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Accessory wear - truck and trailer together, clearly labeled - moved to the
+                     bottom per explicit request (it was previously the first section after the
+                     dials). -->
+                <Border Background="#202020" CornerRadius="6" Padding="12,10"
+                        Visibility="{Binding WearVisibility}">
+                    <StackPanel>
+                        <TextBlock Text="ACCESSORY WEAR" Foreground="#888888" FontSize="10" FontWeight="Bold" Margin="0,0,0,6" />
+
+                        <TextBlock Text="TRUCK" Foreground="#666666" FontSize="9" FontWeight="Bold" Margin="0,0,0,2" />
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <TextBlock Text="ENGINE" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                            <Grid Width="200" Height="16">
+                                <Border Background="#3A3A3A" CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding EngineWearFraction, Converter={StaticResource FracToStar}}" />
+                                        <ColumnDefinition Width="{Binding EngineWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{Binding EngineWearColor}" CornerRadius="3" Margin="1" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock Text="{Binding EngineWearDisplay}" Foreground="{Binding EngineWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="TRANSMISSION" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                            <Grid Width="200" Height="16">
+                                <Border Background="#3A3A3A" CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding TransmissionWearFraction, Converter={StaticResource FracToStar}}" />
+                                        <ColumnDefinition Width="{Binding TransmissionWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{Binding TransmissionWearColor}" CornerRadius="3" Margin="1" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock Text="{Binding TransmissionWearDisplay}" Foreground="{Binding TransmissionWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="CABIN" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                            <Grid Width="200" Height="16">
+                                <Border Background="#3A3A3A" CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding CabinWearFraction, Converter={StaticResource FracToStar}}" />
+                                        <ColumnDefinition Width="{Binding CabinWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{Binding CabinWearColor}" CornerRadius="3" Margin="1" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock Text="{Binding CabinWearDisplay}" Foreground="{Binding CabinWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="CHASSIS" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                            <Grid Width="200" Height="16">
+                                <Border Background="#3A3A3A" CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding ChassisWearFraction, Converter={StaticResource FracToStar}}" />
+                                        <ColumnDefinition Width="{Binding ChassisWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{Binding ChassisWearColor}" CornerRadius="3" Margin="1" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock Text="{Binding ChassisWearDisplay}" Foreground="{Binding ChassisWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="WHEELS (AVG)" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                            <Grid Width="200" Height="16">
+                                <Border Background="#3A3A3A" CornerRadius="3" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding TruckWheelsWearFraction, Converter={StaticResource FracToStar}}" />
+                                        <ColumnDefinition Width="{Binding TruckWheelsWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="{Binding TruckWheelsWearColor}" CornerRadius="3" Margin="1" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock Text="{Binding TruckWheelsWearDisplay}" Foreground="{Binding TruckWheelsWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel Visibility="{Binding HasTrailer, Converter={StaticResource BoolToVis}}" Margin="0,12,0,0">
+                            <TextBlock Text="TRAILER" Foreground="#666666" FontSize="9" FontWeight="Bold" Margin="0,0,0,2" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <TextBlock Text="BODY" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                                <Grid Width="200" Height="16">
+                                    <Border Background="#3A3A3A" CornerRadius="3" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{Binding TrailerBodyWearFraction, Converter={StaticResource FracToStar}}" />
+                                            <ColumnDefinition Width="{Binding TrailerBodyWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{Binding TrailerBodyWearColor}" CornerRadius="3" Margin="1" />
+                                    </Grid>
+                                </Grid>
+                                <TextBlock Text="{Binding TrailerBodyWearDisplay}" Foreground="{Binding TrailerBodyWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="CARGO" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                                <Grid Width="200" Height="16">
+                                    <Border Background="#3A3A3A" CornerRadius="3" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{Binding TrailerCargoWearFraction, Converter={StaticResource FracToStar}}" />
+                                            <ColumnDefinition Width="{Binding TrailerCargoWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{Binding TrailerCargoWearColor}" CornerRadius="3" Margin="1" />
+                                    </Grid>
+                                </Grid>
+                                <TextBlock Text="{Binding TrailerCargoWearDisplay}" Foreground="{Binding TrailerCargoWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="CHASSIS" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                                <Grid Width="200" Height="16">
+                                    <Border Background="#3A3A3A" CornerRadius="3" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{Binding TrailerChassisWearFraction, Converter={StaticResource FracToStar}}" />
+                                            <ColumnDefinition Width="{Binding TrailerChassisWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{Binding TrailerChassisWearColor}" CornerRadius="3" Margin="1" />
+                                    </Grid>
+                                </Grid>
+                                <TextBlock Text="{Binding TrailerChassisWearDisplay}" Foreground="{Binding TrailerChassisWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="WHEELS" Foreground="#BBBBBB" FontSize="14" Width="115" VerticalAlignment="Center" />
+                                <Grid Width="200" Height="16">
+                                    <Border Background="#3A3A3A" CornerRadius="3" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{Binding TrailerWheelsWearFraction, Converter={StaticResource FracToStar}}" />
+                                            <ColumnDefinition Width="{Binding TrailerWheelsWearFraction, Converter={StaticResource FracToStar}, ConverterParameter=Invert}" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="{Binding TrailerWheelsWearColor}" CornerRadius="3" Margin="1" />
+                                    </Grid>
+                                </Grid>
+                                <TextBlock Text="{Binding TrailerWheelsWearDisplay}" Foreground="{Binding TrailerWheelsWearColor}" FontSize="14" FontWeight="Bold" Width="48" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Viewbox>
+        </Grid>
+    </Grid>
+</Window>

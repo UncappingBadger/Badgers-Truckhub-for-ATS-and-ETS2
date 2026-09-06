@@ -277,6 +277,7 @@
                         </TextBlock>
 
                         <CheckBox Content="Current speed" IsChecked="{Binding ShowSpeedSection}" />
+                        <CheckBox Content="Odometer" IsChecked="{Binding ShowOdometer}" />
                         <CheckBox Content="Speed limit sign" IsChecked="{Binding ShowSpeedSign}" />
                         <CheckBox Content="In-game clock" IsChecked="{Binding ShowGameClock}" />
                         <CheckBox Content="Cruise control" IsChecked="{Binding ShowCruiseControl}" />

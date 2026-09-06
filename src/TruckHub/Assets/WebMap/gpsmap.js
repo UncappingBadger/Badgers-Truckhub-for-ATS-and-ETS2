@@ -35,10 +35,43 @@ window.__mapTargetFps = 30;
   };
 })();
 
+// This same page is served two ways: locally inside WebView2 (window.chrome.webview exists, a
+// real bidirectional postMessage bridge to GpsMapWindow) and remotely to a plain browser on the
+// LAN via GpsLanServer (no such bridge - just a static file server, see LAN Mode's own read-only
+// reasoning further down). Needed this early (not just further down where it's used for
+// pin/LAN-button visibility) because the two cases learn which game's data to load in different
+// ways - see resolveActiveGame() below.
+const isRemote = !(window.chrome && window.chrome.webview);
+
+// Which game's map data to load. Locally, GpsMapWindow's own Navigate() call sets a `?game=`
+// param on the page URL - read synchronously, no round trip needed. Remotely, there's no
+// equivalent: the LAN URL shown to the user (typed by hand into another device's browser) stays
+// a plain host:port specifically so there's nothing extra to mistype, so a remote page instead
+// asks GpsLanServer's own `/api/game` endpoint, computed there from the same live telemetry
+// `/api/position` already uses. Either way this has to resolve before the style.json/tiles
+// fetches below, not over postMessage afterward - a message arriving once the page's listener is
+// registered can't retroactively change which files already got fetched. Falls back to ATS's
+// folders on anything unexpected (missing param, a `/api/game` fetch failure) rather than
+// fetching nothing.
+async function resolveActiveGame() {
+  if (!isRemote) {
+    return new URLSearchParams(window.location.search).get('game') === 'ets2' ? 'ets2' : 'ats';
+  }
+  try {
+    const data = await fetch('/api/game').then(r => r.json());
+    return data && data.game === 'ets2' ? 'ets2' : 'ats';
+  } catch {
+    return 'ats';
+  }
+}
+
 import('./vendor/maplibre-gl.mjs')
   .then(async maplibregl => {
     const { Map, Marker, NavigationControl } = maplibregl;
-    reportToHost('info', 'maplibre module loaded');
+    const activeGame = await resolveActiveGame();
+    const TILES_DIR = activeGame === 'ets2' ? 'ets2-tiles' : 'tiles';
+    const MAPDATA_DIR = activeGame === 'ets2' ? 'ets2-mapdata' : 'mapdata';
+    reportToHost('info', `maplibre module loaded (game=${activeGame})`);
 
     // The vector tile source's URL can't just be a plain relative path in style.json (like the
     // geojson sources below use) or a hardcoded "https://truckhub.app/..." one - MapLibre resolves
@@ -50,8 +83,17 @@ import('./vendor/maplibre-gl.mjs')
     // and rewriting the tiles URL to window.location.origin - the one thing that's always correct
     // in both contexts (the WebView2 virtual host locally, this device's real address remotely) -
     // sidesteps the whole question instead of hoping either kind of path resolves right.
+    //
+    // Every mapdata-backed source gets the same TILES_DIR/MAPDATA_DIR swap - style.json's own
+    // structure is shared between both games (down to the vector tiles' internal "ats" layer
+    // name, which tile-ats.mjs always writes regardless of which map's data went in), only the
+    // folder these fetches point at differs.
     const style = await fetch('style.json').then(r => r.json());
-    style.sources.ats.tiles = [`${window.location.origin}/tiles/{z}/{x}/{y}.pbf`];
+    style.sources.ats.tiles = [`${window.location.origin}/${TILES_DIR}/{z}/{x}/{y}.pbf`];
+    style.sources['road-signs'].data = `${MAPDATA_DIR}/road-signs.json`;
+    style.sources['poi-facilities'].data = `${MAPDATA_DIR}/poi-facilities.json`;
+    style.sources['town-labels'].data = `${MAPDATA_DIR}/town-labels.json`;
+    style.sources['state-labels'].data = `${MAPDATA_DIR}/state-labels.json`;
 
     // Road color/width by class (freeway/arterial/local) - a road feature's own `lookToken`
     // property (already present in the tiles) maps to a class via road-classes.json
@@ -61,7 +103,7 @@ import('./vendor/maplibre-gl.mjs')
     // rather than baked into the tiles themselves, same reasoning as the tiles-URL patch above:
     // one place to generate style.json's dynamic bits, from data that's cheap to ship as its own
     // small file.
-    const roadClasses = await fetch('mapdata/road-classes.json').then(r => r.json());
+    const roadClasses = await fetch(`${MAPDATA_DIR}/road-classes.json`).then(r => r.json());
     const ROAD_CLASS_COLOR = { freeway: '#FFB454', arterial: '#7FA8D9', local: '#c7cdd6' };
     const ROAD_CLASS_WIDTH = { freeway: [0.7, 1.8, 4.2], arterial: [0.55, 1.3, 3.2], local: [0.4, 1, 2.6] };
     function buildRoadClassExpression(valueForClass) {
@@ -89,24 +131,45 @@ import('./vendor/maplibre-gl.mjs')
     let pinMarker = null;
     let lastPos = null;
 
-    // This same page is served two ways: locally inside WebView2 (window.chrome.webview exists,
-    // real bidirectional postMessage bridge to GpsMapWindow), and remotely to a plain browser on
-    // the LAN via GpsLanServer (no such bridge - just a static file server). Remote view is
-    // deliberately read-only, same reasoning as ZoidHub's own LAN Mode: editing (placing/clearing a
-    // pin, toggling LAN Mode itself) only ever happens from the PC's own WebView2 instance, never
-    // from a device anyone on the WiFi could be holding.
-    const isRemote = !(window.chrome && window.chrome.webview);
+    // isRemote itself is declared up top now (resolveActiveGame() needed it before this callback
+    // even starts) - kept here as a reminder of what it gates below: remote view is deliberately
+    // read-only, same reasoning as ZoidHub's own LAN Mode - editing (placing/clearing a pin,
+    // toggling LAN Mode itself) only ever happens from the PC's own WebView2 instance, never from
+    // a device anyone on the WiFi could be holding.
 
     const followBtn = document.getElementById('follow-btn');
     const pinBtn = document.getElementById('pin-btn');
     const clearPinBtn = document.getElementById('clear-pin-btn');
     const lanBtn = document.getElementById('lan-btn');
     const lanStatus = document.getElementById('lan-status');
+    const lanSslPrompt = document.getElementById('lan-ssl-prompt');
+    const lanNoSslBtn = document.getElementById('lan-no-ssl-btn');
+    const lanUseSslBtn = document.getElementById('lan-use-ssl-btn');
 
     if (isRemote) {
       pinBtn.style.display = 'none';
       clearPinBtn.style.display = 'none';
       lanBtn.style.display = 'none';
+
+      // Keeps the device's screen from locking while the map is being watched (e.g. mounted in a
+      // vehicle) - supported on iPhone Safari (16.4+) and Android Chrome. A wake lock is released
+      // automatically by the OS whenever the page goes hidden (tab backgrounded, screen manually
+      // locked), so it has to be re-requested on every return to visibility, not just once on load.
+      // Silently does nothing on browsers without Wake Lock API support at all - no real fallback
+      // exists for those.
+      let wakeLock = null;
+      const requestWakeLock = async () => {
+        if (!('wakeLock' in navigator)) return;
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch {
+          // Denied or unsupported in this context - nothing actionable.
+        }
+      };
+      requestWakeLock();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') requestWakeLock();
+      });
     }
 
     followBtn.addEventListener('click', () => {
@@ -136,16 +199,42 @@ import('./vendor/maplibre-gl.mjs')
       }
     });
 
+    // Turning LAN Mode off never needs the SSL choice - just toggle it off directly. Turning it on
+    // asks first (see the prompt buttons below): Apple device users need plain HTTP (see
+    // GpsLanServer's own comment for why a self-signed cert fails there), everyone else can opt
+    // into an encrypted connection if they'd rather.
     lanBtn.addEventListener('click', () => {
-      if (window.chrome && window.chrome.webview) {
+      if (!(window.chrome && window.chrome.webview)) return;
+      if (lanBtn.classList.contains('active')) {
         window.chrome.webview.postMessage({ type: 'toggleLan' });
+        return;
       }
+      lanSslPrompt.classList.add('visible');
     });
 
+    lanNoSslBtn.addEventListener('click', () => {
+      lanSslPrompt.classList.remove('visible');
+      window.chrome.webview.postMessage({ type: 'toggleLan', useSsl: false });
+    });
+
+    lanUseSslBtn.addEventListener('click', () => {
+      lanSslPrompt.classList.remove('visible');
+      window.chrome.webview.postMessage({ type: 'toggleLan', useSsl: true });
+    });
+
+    // Initial camera before the first live position arrives and jumpTo() below takes over -
+    // roughly the geographic center of whichever map is active, so the brief moment before that
+    // first position update shows the right continent (and doesn't waste a burst of tile
+    // requests on the other one entirely). Confirmed live: with this still hardcoded to ATS's own
+    // center, opening the map for an ETS2 session started the camera over the Atlantic/North
+    // America, generating tile-fetch 404s for a region with no ETS2 data at all before the real
+    // jump to the truck's position corrected it a moment later - harmless in practice (self-heals
+    // before a user would notice) but pointless log noise and wasted requests.
+    const [initialLon, initialLat] = activeGame === 'ets2' ? [15, 50] : [-96, 39];
     const map = new Map({
       container: 'map',
       style,
-      center: [-96, 39],
+      center: [initialLon, initialLat],
       zoom: 4.2,
       attributionControl: false,
       // This map is almost entirely thin lines (roads, state borders) - exactly the content
@@ -218,6 +307,92 @@ import('./vendor/maplibre-gl.mjs')
       ctx.fillText(text, diameter / 2, diameter / 2 + 0.5);
       // map.addImage() doesn't accept a raw canvas - ImageData, ImageBitmap, HTMLImageElement, or
       // a {width,height,data} object only.
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    // Real pictograms instead of a plain letter-in-circle badge, for the three POI types the user
+    // actually navigates to mid-drive (fuel/service/rest) - matching the recognizable-at-a-glance
+    // icon language ATS/ETS2's own world map and highway signage use (pump/wrench/bed silhouettes),
+    // the same "replicate the real thing, not a generic badge" reasoning as drawShield() below.
+    // Weigh station keeps its plain "W" badge - not part of this ask.
+    function drawIconBadge(kind, diameter, bgColor, iconColor) {
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = diameter * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      ctx.arc(diameter / 2, diameter / 2, diameter / 2 - 1, 0, Math.PI * 2);
+      ctx.fillStyle = bgColor;
+      ctx.fill();
+      ctx.strokeStyle = '#12161c';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = iconColor;
+      ctx.strokeStyle = iconColor;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (kind === 'fuel') {
+        // Dashboard-style fuel icon: tank body + filler cap + hose looping down to a nozzle tip,
+        // with two level ticks inside the tank.
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(6.5, 7, 5, 9);
+        ctx.fillRect(7.5, 4.5, 3, 2.2);
+        ctx.beginPath();
+        ctx.moveTo(11.5, 9);
+        ctx.lineTo(13.5, 9);
+        ctx.lineTo(13.5, 14.5);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(13.5, 15.3, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(7.3, 10.5);
+        ctx.lineTo(10.7, 10.5);
+        ctx.moveTo(7.3, 12.5);
+        ctx.lineTo(10.7, 12.5);
+        ctx.stroke();
+      } else if (kind === 'wrench') {
+        // Open-end wrench: a diagonal bar with a C-shaped head at each end - the universal
+        // repair/service pictogram (also matches a truck dashboard's own "service required" icon).
+        ctx.save();
+        ctx.translate(diameter / 2, diameter / 2);
+        ctx.rotate(-Math.PI / 4);
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(-5.5, 0);
+        ctx.lineTo(5.5, 0);
+        ctx.stroke();
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(-6.5, 0, 2.6, Math.PI * 0.25, Math.PI * 1.75);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(6.5, 0, 2.6, Math.PI * 1.25, Math.PI * 2.75);
+        ctx.stroke();
+        ctx.restore();
+      } else if (kind === 'bed') {
+        // Headboard + mattress + pillow - the standard "lodging/rest" pictogram real highway signs
+        // use, matching what "rest stop" means here (a parking_ico location a driver can actually
+        // stop and sleep at, per GENERATION.md's own note on that category).
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(4.5, 12, 11, 3.5);
+        ctx.beginPath();
+        ctx.moveTo(4.5, 12);
+        ctx.lineTo(4.5, 6.5);
+        ctx.stroke();
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(5.3, 8.3, 4, 3, 1);
+        } else {
+          ctx.rect(5.3, 8.3, 4, 3);
+        }
+        ctx.fill();
+      }
+
       return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
     }
 
@@ -409,13 +584,13 @@ import('./vendor/maplibre-gl.mjs')
     map.on('load', () => {
       reportToHost('info', 'map load event fired');
 
-      const fuel = drawBadge('F', 20, '#3ecf6e', '#0c1f14');
+      const fuel = drawIconBadge('fuel', 20, '#3ecf6e', '#0c1f14');
       map.addImage('poi-fuel', fuel.imageData, { pixelRatio: fuel.scale });
       const weigh = drawBadge('W', 20, '#FFC24C', '#241a05');
       map.addImage('poi-weigh', weigh.imageData, { pixelRatio: weigh.scale });
-      const rest = drawBadge('R', 20, '#4C9AFF', '#08182b');
+      const rest = drawIconBadge('bed', 20, '#4C9AFF', '#08182b');
       map.addImage('poi-rest', rest.imageData, { pixelRatio: rest.scale });
-      const service = drawBadge('S', 20, '#FF7043', '#2b0f05');
+      const service = drawIconBadge('wrench', 20, '#FF7043', '#2b0f05');
       map.addImage('poi-service', service.imageData, { pixelRatio: service.scale });
 
       if (window.chrome && window.chrome.webview) {

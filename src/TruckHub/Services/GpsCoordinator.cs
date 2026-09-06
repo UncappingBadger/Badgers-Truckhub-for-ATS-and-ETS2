@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
+using TruckHub.Models;
 using TruckHub.ViewModels;
 
 namespace TruckHub.Services;
@@ -28,6 +29,7 @@ public sealed class GpsCoordinator
     private readonly TelemetryService _telemetryService;
     private GpsMapViewModel? _viewModel;
     private GpsLanServer? _lanServer;
+    private bool _lanUseSsl;
     private bool _windowOpen;
 
     // Kicked off once by Prewarm() (called from MainWindow shortly after startup) so both of the
@@ -101,18 +103,22 @@ public sealed class GpsCoordinator
         MaybeTearDown();
     }
 
-    /// <summary>Starts LAN Mode (idempotent - returns the existing server's address if already
-    /// running) and returns the LAN-facing URL to show the user, or null if no usable network
-    /// address could be found.</summary>
-    public async Task<string?> StartLanAsync()
+    /// <summary>Starts LAN Mode (idempotent - returns the existing server's address, ignoring
+    /// `useSsl`, if already running) and returns the LAN-facing URL to show the user, or null if no
+    /// usable network address could be found. `useSsl` is the user's own per-launch choice from the
+    /// LAN prompt in GpsMapWindow - Apple device users should pick plain HTTP (see GpsLanServer's own
+    /// class comment for why), everyone else can opt into HTTPS if they'd rather.</summary>
+    public async Task<string?> StartLanAsync(bool useSsl)
     {
         if (_lanServer == null)
         {
             var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService);
             viewModel.PrewarmRoutingGraph();
             var webMapDir = await GetWebMapDirAsync();
-            _lanServer = new GpsLanServer(webMapDir, () => viewModel.LastPosition, () => viewModel.LastRoutePoints);
-            _lanServer.Start();
+            _lanServer = new GpsLanServer(webMapDir, () => viewModel.LastPosition, () => viewModel.LastRoutePoints,
+                () => viewModel.CurrentGame == SimGame.Ets2 ? "ets2" : "ats");
+            _lanServer.Start(useSsl);
+            _lanUseSsl = useSsl;
         }
 
         return BuildUrl();
@@ -125,7 +131,8 @@ public sealed class GpsCoordinator
     private string? BuildUrl()
     {
         var ip = GpsLanServer.FindLanIPv4Address();
-        return ip != null && _lanServer != null ? $"https://{ip}:{_lanServer.Port}" : null;
+        var scheme = _lanUseSsl ? "https" : "http";
+        return ip != null && _lanServer != null ? $"{scheme}://{ip}:{_lanServer.Port}" : null;
     }
 
     public void StopLan()
