@@ -67,7 +67,9 @@ public partial class MainWindow : Window
         Height = Math.Clamp(settings.WindowHeight, MinHeight, 900);
 
         _telemetryService = new TelemetryService();
-        _gpsCoordinator = new GpsCoordinator(_telemetryService);
+        // Read fresh each call (not captured once) so a mid-session MPH/KM change in Settings takes
+        // effect on the next turn-distance update, same as everywhere else that setting is read.
+        _gpsCoordinator = new GpsCoordinator(_telemetryService, () => _settingsService.Load().UseMetric);
         // Kicked off unconditionally at startup, not just for users who've used GPS before - see
         // GpsCoordinator's own comment for the "why" (a deliberate trade of a little idle
         // background cost for a much faster first GPS-window open).
@@ -117,6 +119,15 @@ public partial class MainWindow : Window
 
             AppLogger.Log("TruckHub closed");
         };
+
+        // Dev convenience for iterating on the GPS map specifically - `TruckHub.exe --gps` opens it
+        // straight away instead of needing a manual click every relaunch. Deferred to Loaded rather
+        // than fired here directly - GpsMap_Click's popup-position math needs this window's own
+        // real position/size already resolved, which isn't settled yet mid-constructor.
+        if (Array.IndexOf(Environment.GetCommandLineArgs(), "--gps") >= 0)
+        {
+            Loaded += (_, _) => GpsMap_Click(this, new RoutedEventArgs());
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)

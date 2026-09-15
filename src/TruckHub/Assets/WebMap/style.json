@@ -13,12 +13,22 @@
       "data": { "type": "FeatureCollection", "features": [] }
     },
     "road-signs": {
-      "type": "geojson",
-      "data": "mapdata/road-signs.json"
+      "type": "vector",
+      "tiles": ["tiles/road-signs/{z}/{x}/{y}.pbf"],
+      "minzoom": 7,
+      "maxzoom": 13
     },
     "poi-facilities": {
-      "type": "geojson",
-      "data": "mapdata/poi-facilities.json"
+      "type": "vector",
+      "tiles": ["tiles/poi-facilities/{z}/{x}/{y}.pbf"],
+      "minzoom": 7,
+      "maxzoom": 13
+    },
+    "company-logos": {
+      "type": "vector",
+      "tiles": ["tiles/company-logos/{z}/{x}/{y}.pbf"],
+      "minzoom": 7,
+      "maxzoom": 13
     },
     "town-labels": {
       "type": "geojson",
@@ -128,6 +138,7 @@
       "id": "poi-facility",
       "type": "symbol",
       "source": "poi-facilities",
+      "source-layer": "poi-facilities",
       "minzoom": 7,
       "layout": {
         "icon-image": [
@@ -143,6 +154,18 @@
       }
     },
     {
+      "id": "company-logo",
+      "type": "symbol",
+      "source": "company-logos",
+      "source-layer": "company-logos",
+      "minzoom": 9,
+      "layout": {
+        "icon-image": ["concat", "company-logo:", ["get", "token"]],
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.6, 13, 1.0],
+        "icon-allow-overlap": false
+      }
+    },
+    {
       "id": "route-line",
       "type": "line",
       "source": "route",
@@ -153,6 +176,7 @@
       "id": "road-signs",
       "type": "symbol",
       "source": "road-signs",
+      "source-layer": "road-signs",
       "minzoom": 7,
       "layout": {
         "icon-image": ["concat", "road-sign:", ["get", "shieldType"], ":", ["get", "number"]],

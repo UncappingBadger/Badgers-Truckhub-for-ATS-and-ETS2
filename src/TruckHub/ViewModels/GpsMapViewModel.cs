@@ -89,6 +89,12 @@ public sealed class GpsMapViewModel : IDisposable
     /// whatever was being shown.</summary>
     public event Action<IReadOnlyList<(double Lon, double Lat)>>? RouteUpdated;
 
+    /// <summary>Fires with the next detected turn ahead on the current route (direction + an
+    /// already-unit-formatted distance string), or null when there's no route or no turn within
+    /// range. ATS only for now - see TurnDetector's own reasoning; ETS2 support is a deliberate
+    /// follow-up once this is confirmed working, not an oversight.</summary>
+    public event Action<(bool IsRight, string DistanceDisplay)?>? NextTurnUpdated;
+
     /// <summary>Latest known position/route, kept alongside the events above - GpsLanServer polls
     /// these directly (it has no window/event-subscriber of its own to push into) rather than
     /// needing its own separate subscription. Reference-assignment is atomic in .NET, so plain
@@ -107,9 +113,12 @@ public sealed class GpsMapViewModel : IDisposable
     /// comment on why this can't be pushed over postMessage after the fact instead.</summary>
     public SimGame CurrentGame => _telemetryService.LastSnapshot.Game;
 
-    public GpsMapViewModel(TelemetryService telemetryService)
+    private readonly Func<bool> _getUseMetric;
+
+    public GpsMapViewModel(TelemetryService telemetryService, Func<bool> getUseMetric)
     {
         _telemetryService = telemetryService;
+        _getUseMetric = getUseMetric;
         _telemetryService.SnapshotUpdated += OnSnapshotUpdated;
     }
 
@@ -168,6 +177,7 @@ public sealed class GpsMapViewModel : IDisposable
         var route = _remainingRoutePoints; // stable local snapshot of the current reference
         if (route.Count < 2)
         {
+            NextTurnUpdated?.Invoke(null);
             return; // no active route to trim/check.
         }
 
@@ -209,6 +219,35 @@ public sealed class GpsMapViewModel : IDisposable
             // not push anything itself.
             UpdateLastRoutePoints(trimmed);
         }
+
+        // ATS only for now - see TurnDetector's own comment and NextTurnUpdated's. The ETS2 side is
+        // a deliberate, separate follow-up once this is confirmed working on real ATS driving.
+        if (_activeGame != SimGame.Ats)
+        {
+            NextTurnUpdated?.Invoke(null);
+            return;
+        }
+
+        var turn = TurnDetector.FindNextTurn(_remainingRoutePoints);
+        NextTurnUpdated?.Invoke(turn == null ? null : (turn.Value.IsRight, FormatTurnDistance(turn.Value.DistanceMeters)));
+    }
+
+    /// <summary>Mirrors the app's existing MI/KM convention (whole-unit for a "near" distance,
+    /// decimal for a "far" one) - feet under roughly a fifth of a mile, otherwise miles to one
+    /// decimal; meters under a kilometer, otherwise km to one decimal.</summary>
+    private string FormatTurnDistance(double meters)
+    {
+        if (_getUseMetric())
+        {
+            return meters < 1000
+                ? $"{Math.Round(meters / 10) * 10:F0} M"
+                : $"{meters / 1000:F1} KM";
+        }
+
+        var feet = meters * 3.28084;
+        return feet < 1000
+            ? $"{Math.Round(feet / 50) * 50:F0} FT"
+            : $"{feet / 5280:F1} MI";
     }
 
     private void UpdateLastRoutePoints(IReadOnlyList<(double X, double Z, double Lon, double Lat)> route)
@@ -227,6 +266,7 @@ public sealed class GpsMapViewModel : IDisposable
         _currentDestinationResolver = null;
         LastRoutePoints = Array.Empty<(double, double)>();
         RouteUpdated?.Invoke(Array.Empty<(double, double)>());
+        NextTurnUpdated?.Invoke(null);
     }
 
     private void UpdateJobRoute(TelemetrySnapshot snapshot)

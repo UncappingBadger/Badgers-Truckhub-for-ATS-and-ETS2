@@ -35,6 +35,22 @@ public static class WebMapAssetExtractor
     {
         ("TruckHub.WebMap.tiles.zip", "tiles"),
         ("TruckHub.WebMap.ets2-tiles.zip", "ets2-tiles"),
+        // Facility-marker and road-sign overlays - see TruckHub.csproj's own comment on why these
+        // are real tiles now instead of the flat road-signs.json/poi-facilities.json GeoJSON this
+        // replaced. Nested subfolders (Directory.CreateDirectory below handles the intermediate
+        // "tiles" segment fine) so the URL scheme lines up with style.json/gpsmap.js's own
+        // TILES_DIR/{overlay}/{z}/{x}/{y}.pbf expectation.
+        ("TruckHub.WebMap.poi-tiles.zip", "tiles/poi-facilities"),
+        ("TruckHub.WebMap.signs-tiles.zip", "tiles/road-signs"),
+        ("TruckHub.WebMap.ets2-poi-tiles.zip", "ets2-tiles/poi-facilities"),
+        ("TruckHub.WebMap.ets2-signs-tiles.zip", "ets2-tiles/road-signs"),
+        ("TruckHub.WebMap.company-tiles.zip", "tiles/company-logos"),
+        ("TruckHub.WebMap.ets2-company-tiles.zip", "ets2-tiles/company-logos"),
+        // Flat <token>.png files (not z/x/y tiles) - reuses this same extraction loop since it's
+        // just "unzip this archive into this subfolder" either way. One shared bundle for both
+        // games (company tokens never collide between them), served at truckhub.app/company-logos/
+        // alongside everything else in this same extracted directory.
+        ("TruckHub.WebMap.company-logos.zip", "company-logos"),
     };
 
     /// <summary>Extracts (or re-extracts, if the embedded content has changed since last time) the

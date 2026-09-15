@@ -228,6 +228,43 @@ the "does the map recover after crossing" behavior change once TruckHub reports 
 instead of nothing) - genuinely new territory is whether the drawn line looks reasonable rendered
 over the water on the real map; flag it if a crossing looks off.
 
+## Added 2026-09-08: EU highway shields (closes the "Highway shield extraction found zero matches"
+gap noted above)
+
+ETS2's road icons turned out to be `{country}_{class}{number}` (e.g. `d_a3` = Germany A3, `fi_4` =
+Finland route 4 with no class letter at all) - a real, decodable format, just a different one from
+ATS's `is80`/`us75`/`ok3`. Reverse-engineered by dumping all 813 unique road-type icon strings from
+`europe-pois.json` and hand-classifying every class letter by real-world meaning, country by
+country - critically, the SAME letter means different things in different countries (Slovak `d` is
+a diaľnica/motorway; Croatian `d` is a državna cesta/ordinary national road). A naive letter-only
+mapping would misclassify these, so `EU_MOTORWAY_CLASSES` in `extract-map-features.ts` keys ambiguous
+letters by (class, country), not class alone. Full mapping table (and the design mockup this was
+approved against) covers e-roads, national motorways (a/ap), Hungarian/Russian M-roads, Austrian
+Schnellstraße, Slovak diaľnica/rýchlostná cesta, Slovenian hitra cesta, Turkish Otoyol, Italian
+Raccordo Autostradale (all -> green "euMotorway" tier), and everything else - plain national road
+numbers, Dutch/Belgian N-roads, Croatian/Greek/Italian/Russian/Portuguese/Albanian national roads
+(-> blue "euNational" tier). No third "county road" tier - checked the full breakdown and nothing
+below national-road level carries a consistent classification signal.
+
+Rendered as a plain rounded-rectangle plate (green or blue fill, white border/text) rather than a
+US-style bespoke silhouette - matches real EU road-sign convention, where the color carries the
+classification and most countries don't use a distinctive shape the way US Interstate/US Route
+shields do. `drawEuShield()` in gpsmap.js, dispatched from the same generic `road-sign:` id handler
+the US shields already use - `style.json` needed zero changes, since its icon-image expression is
+already built generically from the feature's own `shieldType`/`number` properties.
+
+Also corrected the existing Interstate shield's colors while in there - `#1e3f8f`/`#b0202a` were a
+noticeably duller, lighter approximation of the real AASHTO/FHWA navy-and-red; replaced with
+`#00205b`/`#c8102e`, much closer to the actual federal shield colors.
+
+Re-ran `extract-map-features.ts` for `europe`: 2,412 road-number signs now extracted (was 0), 570
+skipped (matches the expected non-route icon count - toll booths, weigh stations, border crossings,
+plus a handful of branch/alternate-route icon suffixes like `it_ss131dcn` this doesn't attempt to
+parse). 1,748 motorway-tier, 664 national-tier. Not yet live-tested through an actual drive - the
+design was approved against a rendered mockup using the exact same canvas code, and the data
+pipeline was verified for count/classification correctness, but nobody's actually seen it on the
+real map yet.
+
 ## Deferred to a future version (not blocking v2.0)
 
 - **No real country/state landmass shapes on the map, for either game.** Not a UK or ETS2-specific

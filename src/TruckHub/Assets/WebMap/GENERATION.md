@@ -84,6 +84,50 @@ up-to-date, fully-DLC'd install, then replace `tiles.zip` (`WebMapAssetExtractor
 hashes each embedded resource's name+size, so any change here is picked up automatically on next
 launch - no manual cache-busting needed).
 
+**Gotcha confirmed live doing this (2026-09-15, see below): `tile-ats.mjs`'s output directories are
+additive, not a clean rebuild** - it only ever writes tiles that have features, so a stale `.pbf`
+left over at a `{z}/{x}/{y}` that no longer has any feature in the new run never gets deleted. Always
+`rm -rf` each `out/tiles/<target>` directory immediately before re-running `tile-ats.mjs` against it,
+for the base roads and all three overlays alike - don't just re-run the command over an existing
+output directory.
+
+## Re-generated for ATS 1.61 (2026-09-15): Idaho speed-limits schema fix
+
+ATS 1.61 shipped `def/country/idaho/speed_limits.sii` (or an equivalent generated def - not
+hand-inspected, only the parsed result was) with `.speed_limit.truck`'s `maxLimit` array one entry
+short of `laneSpeedClass`/`limit`/`urbanLimit` - `truckermudgeon`'s own `processSpeedLimitJson` in
+`packages/clis/parser/game-files/def-parser.ts` asserted all four arrays equal length and crashed the
+whole parser run on it. Patched (in the vendored GPL-3 `truckermudgeon-maps` clone, never shipped as
+code - see the toolchain note at the top of this file) to pad any array shorter than
+`laneSpeedClass` by repeating its own last element, generically (not Idaho- or freeway-specific), and
+still assert equal length afterward as a sanity check. TruckHub's own consumer of this data
+(`RoutingGraph`'s speed-class lookup) only ever reads `.limit`, never `.maxLimit`, so the padded value
+has no effect on anything downstream. Confirmed live: Idaho's parsed `freeway.maxLimit` came out as
+`70` (the padded repeat of `dividedRoad`'s value) against a real `freeway.limit` of `80` - exactly the
+"array was one short" signature, on the exact field affected.
+
+Full pipeline re-run end to end (ATS only - ETS2's `europe-*` parser output and `ets2-*` tiles/graph
+were never touched, confirmed by timestamp before and after). Before -> after (pre-1.61 baseline,
+generated 2026-08-30/31, vs. this run):
+
+- Parser: `usa-companies.json` 2096 -> 2114 entries, `usa-roads.json` 218184 -> 219176, `usa-nodes.json`
+  no longer directly comparable (parser's own node-writing changed between these runs; use the
+  generator's own node-reference count instead, see below).
+- Generator (`ats.geojson`): 183566 -> 184207 features.
+- Orphaned-road filter: 184207 -> 168023 features (was 183566 -> 167417). 119167 roads total, 102983
+  kept / 16184 dropped as orphaned fragments (13.6%, same ratio as the original 16149/119012 = 13.6%).
+- Base tiling (`out/tiles/pbf`): 92311 tiles (was 91655), 79.0MB zipped.
+- `extract-map-features.ts`: 1921 road-signs, 6202 poi-facilities (2067 car-only gas stations
+  excluded), 2114 company-logos, 21 state-labels.
+- Overlay tiling: poi-facilities 8637 tiles (1.7MB), road-signs 8970 tiles (1.6MB), company-logos
+  8043 tiles (1.7MB).
+- Route graph (see sibling `Assets/RouteGraph/GENERATION.md` for the full breakdown): 2195118 routable
+  nodes / 2935795 directed edges (was 2187517 / 2926055), 2107/2114 companies resolved (99.67%, was
+  2093/2096 = 99.86%).
+
+`company-logos.zip` (the flat per-token PNG bundle) was deliberately left untouched - the logo artwork
+itself didn't change, only marker positions/counts (covered by `company-tiles.zip` above).
+
 ## Map richness (2026-08-31): POIs, city labels, state borders, highway shields
 
 Added directly on top of data already present in `ats.geojson`/the tiles - `truckermudgeon`'s own
@@ -161,6 +205,33 @@ layers styling what was already there:
   marker shape use. These are real US federal/state highway-standard designs - government works with
   no copyright - so replicating the actual shapes/colors directly, rather than a licensing-cautious
   generic stand-in, is fine.
+
+- **Company markers** (`company-logo` layer, tiled the same way as poi-facilities/road-signs above -
+  2096 ATS / 1844 ETS2 points, the same order of magnitude that forced those two into real tiles).
+  `extract-map-features.ts` writes `company-logos.json` in the same pass as the other two, straight
+  off `usa/europe-pois.json`'s own `type: "company"` records - no separate lookup/join needed, since
+  each record already carries position, a real display `name` (a literal string from that company's
+  own `def/company/<token>/company.sii` - checked every usa/europe-companyDefs.json entry, zero
+  `@@locale_key@@` references, so no locale-file resolution step exists to get wrong), and `icon`
+  (the company token, doubling as its logo's filename).
+
+  Logo *images* are a genuinely different kind of asset from everything else on this map: real,
+  finished artwork SCS designed for their game, not geometry/symbology this project derived or drew
+  itself (contrast the MUTCD shields above, which are US federal/state highway-standard designs -
+  government works, no copyright issue replicating them exactly). Extracted from
+  `material/ui/company/small/<token>.tobj` inside the game's own archives, via `truckermudgeon`'s own
+  already-working `.tobj`→DDS→PNG decode pipeline (`packages/clis/parser/game-files/scs-archive.ts` +
+  `dds-parser.ts`, pure JS, no native step) - this had already been run as a side effect of other
+  parser work, so no new extraction tooling was needed, just discovering the PNGs already sat at
+  `out/parser/icons/<token>.png`. 498 unique company tokens across both games combined (zero overlap
+  between them - confirmed), each logo 128x32px, ~1.9MB total - small enough to ship as one shared
+  `company-logos.zip` (flat `<token>.png` files, not tiled - see `WebMapAssetExtractor.cs`) rather
+  than needing per-tile embedding. `gpsmap.js`'s `styleimagemissing` handler fetches the matching PNG
+  by token the first time a `company-logo:<token>` id is actually requested, the same lazy-load
+  pattern city/state labels and highway shields already use, just backed by a real image instead of a
+  canvas drawing. Re-run alongside the other two (`extract-map-features.ts`), then
+  `node tile-ats.mjs out/map-features/company-logos.json out/tiles/pbf-company company-logos 7`
+  (and the ETS2 equivalent) to retile.
 
 **No MapLibre `text-field` anywhere** - this style never configured a `glyphs` URL (an earlier
 attempt at `"glyphs": null` was invalid and removed outright, so there was never any font-glyph

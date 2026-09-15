@@ -71,6 +71,7 @@ public partial class GpsMapWindow : Window
         _viewModel = coordinator.AcquireForWindow();
         _viewModel.LivePositionUpdated += OnLivePositionUpdated;
         _viewModel.RouteUpdated += OnRouteUpdated;
+        _viewModel.NextTurnUpdated += OnNextTurnUpdated;
 
         // If this window is reopening while the shared view model was kept alive by LAN Mode, its
         // events already fired for the "current" state before this window existed to hear them -
@@ -93,6 +94,7 @@ public partial class GpsMapWindow : Window
         {
             _viewModel.LivePositionUpdated -= OnLivePositionUpdated;
             _viewModel.RouteUpdated -= OnRouteUpdated;
+            _viewModel.NextTurnUpdated -= OnNextTurnUpdated;
             CoreBalancer.FpsRecommendationChanged -= _onFpsRecommendationChanged;
             // The coordinator owns the view model now, not this window - it only actually disposes
             // it once nothing (this window, or LAN Mode) needs it anymore.
@@ -307,6 +309,33 @@ public partial class GpsMapWindow : Window
         }
 
         PushRoute(points);
+    }
+
+    // No pending-replay needed here unlike position/route above - this recomputes on every
+    // position tick regardless (see GpsMapViewModel.AdvanceRoute), not only on a destination
+    // change, so a page that wasn't ready for the first one gets a correct value within ~1s anyway.
+    private void OnNextTurnUpdated((bool IsRight, string DistanceDisplay)? turn)
+    {
+        if (!_webViewReady)
+        {
+            return;
+        }
+
+        Dispatcher.Invoke(() =>
+        {
+            if (MapWebView.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            var json = JsonSerializer.Serialize(new
+            {
+                type = "nextTurn",
+                isRight = turn?.IsRight,
+                distance = turn?.DistanceDisplay,
+            });
+            MapWebView.CoreWebView2.PostWebMessageAsJson(json);
+        });
     }
 
     private void PushPosition(GpsLivePosition position)

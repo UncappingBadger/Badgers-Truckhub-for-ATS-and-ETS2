@@ -90,8 +90,14 @@ import('./vendor/maplibre-gl.mjs')
     // folder these fetches point at differs.
     const style = await fetch('style.json').then(r => r.json());
     style.sources.ats.tiles = [`${window.location.origin}/${TILES_DIR}/{z}/{x}/{y}.pbf`];
-    style.sources['road-signs'].data = `${MAPDATA_DIR}/road-signs.json`;
-    style.sources['poi-facilities'].data = `${MAPDATA_DIR}/poi-facilities.json`;
+    // Same real vector tiles as the roads above now (previously a flat GeoJSON blob - see
+    // TruckHub.csproj's own comment on why: MapLibre had to hold and re-evaluate every single
+    // facility/sign feature in the whole dataset on every pan regardless of what was on screen,
+    // which is what made dragging feel clunky), so these need the same absolute-URL treatment the
+    // comment above explains, not the plain relative-path .data fetch a GeoJSON source could use.
+    style.sources['road-signs'].tiles = [`${window.location.origin}/${TILES_DIR}/road-signs/{z}/{x}/{y}.pbf`];
+    style.sources['poi-facilities'].tiles = [`${window.location.origin}/${TILES_DIR}/poi-facilities/{z}/{x}/{y}.pbf`];
+    style.sources['company-logos'].tiles = [`${window.location.origin}/${TILES_DIR}/company-logos/{z}/{x}/{y}.pbf`];
     style.sources['town-labels'].data = `${MAPDATA_DIR}/town-labels.json`;
     style.sources['state-labels'].data = `${MAPDATA_DIR}/state-labels.json`;
 
@@ -141,15 +147,27 @@ import('./vendor/maplibre-gl.mjs')
     const pinBtn = document.getElementById('pin-btn');
     const clearPinBtn = document.getElementById('clear-pin-btn');
     const lanBtn = document.getElementById('lan-btn');
+    const turnsBtn = document.getElementById('turns-btn');
+    const turnSignCanvas = document.getElementById('turn-sign');
     const lanStatus = document.getElementById('lan-status');
     const lanSslPrompt = document.getElementById('lan-ssl-prompt');
     const lanNoSslBtn = document.getElementById('lan-no-ssl-btn');
     const lanUseSslBtn = document.getElementById('lan-use-ssl-btn');
 
+    // On by default - a purely local display preference, not something that needs an opt-in the
+    // way a networking feature like LAN Mode does.
+    let turnsEnabled = true;
+    turnsBtn.classList.add('active');
+    let lastTurn = null;
+
     if (isRemote) {
       pinBtn.style.display = 'none';
       clearPinBtn.style.display = 'none';
       lanBtn.style.display = 'none';
+      // Same "editing is PC-only, viewing is fine remotely" split as the buttons above - the sign
+      // itself still renders for a remote viewer if the PC currently has it toggled on, this just
+      // hides the toggle control itself.
+      turnsBtn.style.display = 'none';
 
       // Keeps the device's screen from locking while the map is being watched (e.g. mounted in a
       // vehicle) - supported on iPhone Safari (16.4+) and Android Chrome. A wake lock is released
@@ -178,6 +196,12 @@ import('./vendor/maplibre-gl.mjs')
       if (follow && lastPos) {
         map.easeTo({ center: [lastPos.lon, lastPos.lat], duration: 400 });
       }
+    });
+
+    turnsBtn.addEventListener('click', () => {
+      turnsEnabled = !turnsEnabled;
+      turnsBtn.classList.toggle('active', turnsEnabled);
+      renderTurnSign();
     });
 
     pinBtn.addEventListener('click', () => {
@@ -237,6 +261,13 @@ import('./vendor/maplibre-gl.mjs')
       center: [initialLon, initialLat],
       zoom: 4.2,
       attributionControl: false,
+      // Default cache sizing tracks roughly the current viewport's own tile count, not everything
+      // fetched this session - so the wide initial whole-map view's tiles were getting evicted
+      // once the user zoomed in and drove around for a while, meaning zooming back out later had
+      // to refetch them fresh (the stutter this is fixing). All tiles here are small and served
+      // from local disk (see WebMapAssetExtractor), so holding onto far more than the bare minimum
+      // is cheap - conservative starting point, easy to tune down later if it isn't needed.
+      maxTileCacheSize: 2000,
       // This map is almost entirely thin lines (roads, state borders) - exactly the content
       // antialiasing (WebGL's default MSAA-style edge smoothing) costs the most GPU work on, for
       // a screen full of long straight/gently-curved segments where the jaggies it's smoothing
@@ -441,7 +472,11 @@ import('./vendor/maplibre-gl.mjs')
       }
       ctx.closePath();
 
-      const fill = shieldType === 'interstate' ? '#1e3f8f' : '#ffffff';
+      // Real AASHTO/FHWA Interstate shield colors are a much darker navy and brighter red than
+      // what was here before (#1e3f8f/#b0202a) - that's part of what makes the real shield read at
+      // a glance from a moving vehicle; a duller approximation loses exactly the contrast the
+      // design is built around.
+      const fill = shieldType === 'interstate' ? '#00205b' : '#ffffff';
       const border = shieldType === 'interstate' ? '#ffffff' : '#12161c';
       ctx.fillStyle = fill;
       ctx.fill();
@@ -452,7 +487,7 @@ import('./vendor/maplibre-gl.mjs')
       if (shieldType === 'interstate') {
         // Red band across the upper third - the top edge is flat/near-full-width there, so a
         // plain rect reads correctly without needing to clip to the shield's own curve.
-        ctx.fillStyle = '#b0202a';
+        ctx.fillStyle = '#c8102e';
         ctx.fillRect(w * 0.08, h * 0.1, w * 0.84, h * 0.22);
       }
 
@@ -463,6 +498,132 @@ import('./vendor/maplibre-gl.mjs')
       const textY = shieldType === 'interstate' ? h * 0.62 : h / 2 + 0.5;
       ctx.fillText(number, w / 2, textY);
       return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    // European route-number plates (E-roads, national motorways/expressways, national/regional
+    // roads) - unlike the US MUTCD shapes above, most EU countries just use a plain colored
+    // rectangle for their route markers; the color carries the classification, not a bespoke
+    // silhouette, so one shape with a tier-driven fill color covers the real thing accurately.
+    // `tier` is 'motorway' (green - E-roads and national motorways/expressways) or 'national'
+    // (blue - everything else, see extract-map-features.ts for the full country-aware mapping).
+    function drawEuShield(number, tier) {
+      const scale = 2;
+      const fontSize = 12;
+      const measureCtx = document.createElement('canvas').getContext('2d');
+      measureCtx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const width = Math.max(30, measureCtx.measureText(number).width + 14);
+      const height = width * 0.62;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+      const w = width, h = height;
+      const r = h * 0.22;
+
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(w - r, 0);
+      ctx.quadraticCurveTo(w, 0, w, r);
+      ctx.lineTo(w, h - r);
+      ctx.quadraticCurveTo(w, h, w - r, h);
+      ctx.lineTo(r, h);
+      ctx.quadraticCurveTo(0, h, 0, h - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+
+      ctx.fillStyle = tier === 'motorway' ? '#0a7a3c' : '#0055a4';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(number, w / 2, h / 2 + 0.5);
+      return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
+    }
+
+    // Next-turn sign: real US advance-guide-sign styling (green - highway exit/turn guidance -
+    // distinct from the Interstate shield's navy blue, which is reserved for route markers) with a
+    // bold MUTCD-style advance-turn-arrow glyph and a distance readout, approved against a rendered
+    // mockup before this was wired in. Drawn straight onto the fixed #turn-sign canvas (a plain
+    // screen-space overlay, not a MapLibre-anchored icon - it always sits in the same map-window
+    // corner regardless of pan/zoom) rather than through the addImage/styleimagemissing path the
+    // shields above use, since this isn't tied to a map coordinate at all.
+    function drawTurnSign(isRight, distanceText) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = 92, h = 78;
+      turnSignCanvas.width = w * dpr;
+      turnSignCanvas.height = h * dpr;
+      turnSignCanvas.style.width = w + 'px';
+      turnSignCanvas.style.height = h + 'px';
+      const ctx = turnSignCanvas.getContext('2d');
+      ctx.clearRect(0, 0, turnSignCanvas.width, turnSignCanvas.height);
+      ctx.scale(dpr, dpr);
+
+      const r = 6;
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(w - r, 0);
+      ctx.quadraticCurveTo(w, 0, w, r);
+      ctx.lineTo(w, h - r);
+      ctx.quadraticCurveTo(w, h, w - r, h);
+      ctx.lineTo(r, h);
+      ctx.quadraticCurveTo(0, h, 0, h - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fillStyle = '#006747';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(w / 2, 30);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 9;
+      ctx.lineCap = 'butt';
+      ctx.lineJoin = 'miter';
+
+      const sign = isRight ? 1 : -1;
+      ctx.beginPath();
+      ctx.moveTo(sign * -16, 16);
+      ctx.lineTo(sign * -16, 0);
+      ctx.quadraticCurveTo(sign * -16, -16, sign * 0, -16);
+      ctx.lineTo(sign * 14, -16);
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(sign * 14, -16);
+      ctx.rotate(sign === 1 ? Math.PI / 2 : -Math.PI / 2);
+      ctx.beginPath();
+      ctx.moveTo(-9, 5);
+      ctx.lineTo(0, -9);
+      ctx.lineTo(9, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.restore();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 15px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(distanceText, w / 2, h - 14);
+    }
+
+    function renderTurnSign() {
+      if (turnsEnabled && lastTurn) {
+        drawTurnSign(lastTurn.isRight, lastTurn.distance);
+        turnSignCanvas.classList.add('visible');
+      } else {
+        turnSignCanvas.classList.remove('visible');
+      }
     }
 
     function drawCityLabel(name, scaleRank) {
@@ -546,6 +707,13 @@ import('./vendor/maplibre-gl.mjs')
       return { imageData: ctx.getImageData(0, 0, canvas.width, canvas.height), scale };
     }
 
+    // Guards company-logo fetches only - the drawn-on-canvas ids above (city-label:, road-sign:,
+    // etc.) are cheap synchronous draws with no fetch to de-dupe, and MapLibre itself only ever
+    // fires styleimagemissing once per id in the normal case anyway. A real network fetch is slow
+    // enough that two tiles referencing the same not-yet-loaded company could plausibly both miss
+    // before the first addImage() call lands, which would otherwise mean two fetches for one logo.
+    const pendingCompanyLogos = new Set();
+
     map.on('styleimagemissing', e => {
       const id = e.id;
       try {
@@ -572,8 +740,32 @@ import('./vendor/maplibre-gl.mjs')
           map.addImage(id, imageData, { pixelRatio: scale });
         } else if (id.startsWith('road-sign:')) {
           const [shieldType, number] = id.slice('road-sign:'.length).split(':');
-          const { imageData, scale } = drawShield(number, shieldType);
+          const { imageData, scale } = shieldType === 'euMotorway' || shieldType === 'euNational'
+            ? drawEuShield(number, shieldType === 'euMotorway' ? 'motorway' : 'national')
+            : drawShield(number, shieldType);
           map.addImage(id, imageData, { pixelRatio: scale });
+        } else if (id.startsWith('company-logo:')) {
+          // Real logo artwork (see Assets\WebMap\GENERATION.md - extracted once at build time from
+          // the game's own material/ui/company/small/<token>.tobj), not something drawn - so this
+          // fetches the bundled PNG instead of calling one of the drawXxx() canvas helpers above.
+          const token = id.slice('company-logo:'.length);
+          if (pendingCompanyLogos.has(token)) {
+            return;
+          }
+          pendingCompanyLogos.add(token);
+          fetch(`${window.location.origin}/company-logos/${token}.png`)
+            .then(r => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.blob();
+            })
+            .then(blob => createImageBitmap(blob))
+            .then(bitmap => {
+              if (!map.hasImage(id)) {
+                map.addImage(id, bitmap);
+              }
+            })
+            .catch(err => reportToHost('error', `company logo fetch failed for '${token}': ${err}`))
+            .finally(() => pendingCompanyLogos.delete(token));
         }
       } catch (err) {
         reportToHost('error', `styleimagemissing failed for ${id}: ${err}`);
@@ -638,11 +830,13 @@ import('./vendor/maplibre-gl.mjs')
     });
 
     function createMarkerElement() {
+      // 25% larger than the original 22px (-> 27.5px) - the plain amber triangle was blending into
+      // some roads at typical driving zoom, hard to spot at a glance.
       const el = document.createElement('div');
-      el.style.width = '22px';
-      el.style.height = '22px';
+      el.style.width = '27.5px';
+      el.style.height = '27.5px';
       el.innerHTML = `
-        <svg viewBox="0 0 24 24" width="22" height="22" style="display:block">
+        <svg viewBox="0 0 24 24" width="27.5" height="27.5" style="display:block">
           <path d="M12 2 L20 20 L12 15.5 L4 20 Z" fill="#FFC24C" stroke="#12161c" stroke-width="1.2" />
         </svg>`;
       return el;
@@ -748,6 +942,9 @@ import('./vendor/maplibre-gl.mjs')
           setLivePosition(msg);
         } else if (msg.type === 'route') {
           setRoute(msg.points);
+        } else if (msg.type === 'nextTurn') {
+          lastTurn = msg.isRight == null ? null : { isRight: msg.isRight, distance: msg.distance };
+          renderTurnSign();
         } else if (msg.type === 'lanStatus') {
           lanBtn.classList.toggle('active', msg.active);
           if (msg.active && msg.url) {

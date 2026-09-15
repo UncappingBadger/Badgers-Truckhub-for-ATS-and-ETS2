@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.2.0 - 2026-09-15
+
+### Added
+- ETS2 GPS map now shows real European highway shields - green for E-roads/motorways/expressways,
+  blue for national and regional roads - matching the same "replicate the real sign" approach as
+  the existing ATS Interstate/US Route shields. Also corrected those existing Interstate shield
+  colors, which were a noticeably duller approximation of the real AASHTO/FHWA navy-and-red.
+- GPS map (ATS only for now) shows a next-turn sign in the bottom-right corner - a green
+  advance-guide-sign-style plate with a directional arrow and distance, toggleable from its own
+  button in the map's toolbar (on by default). ETS2 support is a planned follow-up once this is
+  confirmed working on real driving.
+- GPS map now shows real delivery-company names and logos at each marker (both games), sourced
+  from the games' own data - see `THIRD_PARTY_NOTICES.md` for what's shipped and why.
+
+### Changed
+- The player-position marker on the GPS map is 25% larger - it was blending into some road
+  colors at normal zoom levels.
+
+### Fixed
+- GPS map dragging/panning felt clunky, especially with facility icons and highway shields
+  visible - both overlays were being held and re-evaluated as one flat dataset regardless of
+  what was actually on screen. Converted to real vector tiles, same as the base road layer, so
+  only what's currently visible is ever touched.
+- Zooming back out after zooming in caused a stutter burst while the map refetched everything
+  it had evicted from cache. MapLibre's tile cache had no explicit size set, so it defaulted to
+  roughly the current viewport's own tile count.
+
+### Maintenance
+- Map/route data refreshed against ATS 1.61 (new gas stations, map polish in CA/OR/WA/ID/MT/WY).
+  Also fixed a real crash in the underlying map-data tooling caused by a schema inconsistency in
+  that patch's Idaho speed-limit data.
+
 ## v2.1.0 - 2026-09-06
 
 ### Added

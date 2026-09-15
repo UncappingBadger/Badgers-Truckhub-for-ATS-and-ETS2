@@ -12,7 +12,7 @@
     <RootNamespace>TruckHub</RootNamespace>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
 
     <!-- Publish settings: one self-contained exe, no separate .NET install required -->
     <SelfContained>true</SelfContained>
@@ -38,7 +38,7 @@
          relative path (mixed \/ separators from %(RecursiveDir) are fine - WebMapAssetExtractor
          normalizes them, nothing else ever parses these names). -->
     <None Remove="Assets\WebMap\**" />
-    <EmbeddedResource Include="Assets\WebMap\**" Exclude="Assets\WebMap\tiles.zip;Assets\WebMap\ets2-tiles.zip">
+    <EmbeddedResource Include="Assets\WebMap\**" Exclude="Assets\WebMap\tiles.zip;Assets\WebMap\ets2-tiles.zip;Assets\WebMap\poi-tiles.zip;Assets\WebMap\signs-tiles.zip;Assets\WebMap\ets2-poi-tiles.zip;Assets\WebMap\ets2-signs-tiles.zip;Assets\WebMap\company-tiles.zip;Assets\WebMap\ets2-company-tiles.zip;Assets\WebMap\company-logos.zip">
       <LogicalName>TruckHub.WebMap/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
 
@@ -57,6 +57,46 @@
          until that's deliberately flipped on. -->
     <EmbeddedResource Include="Assets\WebMap\ets2-tiles.zip">
       <LogicalName>TruckHub.WebMap.ets2-tiles.zip</LogicalName>
+    </EmbeddedResource>
+
+    <!-- Facility-marker and road-sign overlays, tiled the same way as the roads above instead of
+         one flat GeoJSON blob (the road-signs.json/poi-facilities.json mapdata files this replaced)
+         - a flat source meant MapLibre held and re-evaluated every single feature in the whole
+         dataset on every pan/frame regardless of what was actually on screen, which is what made
+         dragging the map feel clunky (same root cause as an earlier ZoidHub performance issue).
+         Real vector tiles mean only the handful of features in the currently-visible tiles ever get
+         touched. -->
+    <EmbeddedResource Include="Assets\WebMap\poi-tiles.zip">
+      <LogicalName>TruckHub.WebMap.poi-tiles.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\WebMap\signs-tiles.zip">
+      <LogicalName>TruckHub.WebMap.signs-tiles.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\WebMap\ets2-poi-tiles.zip">
+      <LogicalName>TruckHub.WebMap.ets2-poi-tiles.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\WebMap\ets2-signs-tiles.zip">
+      <LogicalName>TruckHub.WebMap.ets2-signs-tiles.zip</LogicalName>
+    </EmbeddedResource>
+
+    <!-- Company name/logo markers - same tiling reasoning as the two overlays above (2096 ATS /
+         1844 ETS2 points is the same order of magnitude poi-facilities was at when its flat-GeoJSON
+         version caused real map stutter). Names/positions come from usa/europe-pois.json's own
+         `type: "company"` records (extract-map-features.ts); logo images are extracted separately as
+         plain PNGs (see Assets\WebMap\GENERATION.md) since a vector tile can carry a company's token
+         but not its actual logo artwork - gpsmap.js fetches the matching PNG by token at render time
+         (company-logos.zip below), the same on-demand pattern styleimagemissing already uses for
+         city/state labels and highway shields, just backed by a real image instead of a canvas
+         drawing. Company tokens never collide between the two games (verified), so one shared PNG
+         bundle covers both. -->
+    <EmbeddedResource Include="Assets\WebMap\company-tiles.zip">
+      <LogicalName>TruckHub.WebMap.company-tiles.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\WebMap\ets2-company-tiles.zip">
+      <LogicalName>TruckHub.WebMap.ets2-company-tiles.zip</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\WebMap\company-logos.zip">
+      <LogicalName>TruckHub.WebMap.company-logos.zip</LogicalName>
     </EmbeddedResource>
 
     <!-- Routable road-network graph (see Assets\RouteGraph\GENERATION.md) - built directly from

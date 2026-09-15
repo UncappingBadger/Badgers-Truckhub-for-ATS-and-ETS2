@@ -39,9 +39,12 @@ public sealed class GpsCoordinator
     private Task<string>? _webMapDirTask;
     private Task<(CoreWebView2Environment Env, string UserDataFolder)>? _prewarmedEnvironmentTask;
 
-    public GpsCoordinator(TelemetryService telemetryService)
+    private readonly Func<bool> _getUseMetric;
+
+    public GpsCoordinator(TelemetryService telemetryService, Func<bool> getUseMetric)
     {
         _telemetryService = telemetryService;
+        _getUseMetric = getUseMetric;
     }
 
     public bool IsLanActive => _lanServer != null;
@@ -90,7 +93,7 @@ public sealed class GpsCoordinator
     public GpsMapViewModel AcquireForWindow()
     {
         _windowOpen = true;
-        var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService);
+        var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric);
         viewModel.PrewarmRoutingGraph();
         return viewModel;
     }
@@ -112,7 +115,7 @@ public sealed class GpsCoordinator
     {
         if (_lanServer == null)
         {
-            var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService);
+            var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric);
             viewModel.PrewarmRoutingGraph();
             var webMapDir = await GetWebMapDirAsync();
             _lanServer = new GpsLanServer(webMapDir, () => viewModel.LastPosition, () => viewModel.LastRoutePoints,

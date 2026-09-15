@@ -3,8 +3,10 @@
 TruckHub is an independent, fan-made project. It is not affiliated with, endorsed by, or
 sponsored by SCS Software. "American Truck Simulator" and "Euro Truck Simulator 2" are
 trademarks of SCS Software. TruckHub reads telemetry data that the games themselves publish
-through their own official SDK, and does not modify, redistribute, or extract any copyrighted
-game assets.
+through their own official SDK. The GPS map's road/route data is derived geometry, not
+game assets - see the TruckSim Maps entry below. The one exception is the GPS map's company
+name/logo overlay, which embeds a small set of real logo images extracted directly from the
+games' own files - see "SCS Software company logos" below for exactly what and why.
 
 TruckHub builds on the open-source software and public research listed below. Full license
 texts are reproduced where the software itself is distributed as part of TruckHub; where a
@@ -79,6 +81,21 @@ the bundled third-party notices below it, is shipped alongside the library at
 > Copyright (c) 2020 Mapbox), glfx.js (MIT, Copyright (C) 2011 Evan Wallace), and a portion
 > of d3-color (BSD-3-Clause, Copyright 2010-2016 Mike Bostock). See
 > `src/TruckHub/Assets/WebMap/vendor/LICENSE.txt` for the complete text of all four notices.
+
+### SCS Software company logos
+Source: extracted from the games' own installed files (`material/ui/company/small/*.tobj`),
+via `truckermudgeon/maps`' existing texture-decode tooling (see the TruckSim Maps entry below)
+Rights: original artwork, © SCS Software
+
+The GPS map's company-name overlay shows each in-game delivery company's real logo alongside
+its name. Unlike the road/route data below, these are SCS Software's own original artwork
+(fictional in-game company logos, not real-world trademarks - checked against all 498 company
+names shipped, no matches), extracted unmodified from a legitimately-owned, fully-DLC'd copy of
+each game and embedded in TruckHub (`Assets/WebMap/company-logos.zip`) purely for identification
+alongside the map marker they're already attached to in-game. A companion Workshop mod that
+reskins these same companies with real-world corporate logos was investigated and deliberately
+not integrated, specifically because of the different (and real) trademark exposure that would
+carry - see `Assets/WebMap/GENERATION.md`'s company-markers section for the full reasoning.
 
 ## Tools and research used during development (not distributed with TruckHub)
 

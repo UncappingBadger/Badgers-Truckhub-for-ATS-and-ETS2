@@ -34,6 +34,15 @@
     border-color: #FFC24C;
   }
 
+  #turn-sign {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 5;
+    display: none;
+  }
+  #turn-sign.visible { display: block; }
+
   #lan-status {
     position: absolute;
     left: 10px;
@@ -107,7 +116,9 @@
   <button id="pin-btn" type="button">Pin</button>
   <button id="clear-pin-btn" type="button">Clear</button>
   <button id="lan-btn" type="button">LAN</button>
+  <button id="turns-btn" type="button">Turns</button>
 </div>
+<canvas id="turn-sign"></canvas>
 <script type="module" src="gpsmap.js"></script>
 </body>
 </html>
