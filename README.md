@@ -145,8 +145,8 @@ it and switches to a different truck's calibration (or falls back to raw numbers
 
 ### Using the job logbook
 
-Click the small **arrow** on the right edge of the window (about halfway down) to slide the logbook
-out. It logs every job as soon as you deliver it — cancelled jobs aren't recorded — with a running
+Click the **LOG** tab on the right edge of the window to slide the logbook out. It logs every job
+as soon as you deliver it — cancelled jobs aren't recorded — with a running
 total of payout and mileage for the session at the top. It's not saved anywhere; closing TruckHub
 clears it, so think of it as a running tally for the session you're currently driving, not a permanent
 record.
@@ -154,7 +154,7 @@ record.
 While it's docked, it resizes right along with the main window. If you'd rather have it as its own
 window — to put it on a second monitor, or just give it more room — click the **pop-out** button in
 its header and it detaches into an independent, freely resizable window with its own close button.
-Closing it (either its own close button, or clicking the same arrow tab again on the main window)
+Closing it (either its own close button, or clicking the same LOG tab again on the main window)
 puts it away; open it again and it comes back docked.
 
 ## Staying up to date
