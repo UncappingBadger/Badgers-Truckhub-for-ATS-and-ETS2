@@ -5,8 +5,10 @@ information you actually want while driving, without alt-tabbing or squinting at
 Works the same whether you're hauling in the US or across Europe, UK included.
 
 *TruckHub is an independent fan-made project, not affiliated with or endorsed by SCS Software.
-It only reads telemetry the games publish through their own official SDK - no game files are
-modified or redistributed.*
+It mainly reads live telemetry the games publish through their own official SDK; the GPS map's
+road/route data is derived from the games' own files, and its company markers embed a small set
+of the games' own logo images (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for exactly
+what and why).*
 
 ## What it shows
 
@@ -94,6 +96,13 @@ routes straight across a ferry or train crossing as part of the same job, the sa
 other stretch of the trip. Note that TruckHub's GPS has no connection to the in-game GPS — they're
 computed completely independently, so depending on routing they can occasionally disagree with
 each other. That's a limitation of what the SCS SDK exposes, not a bug.
+
+On the map itself: real MUTCD-style highway shields (Interstate/US Route/State Route in ATS, green
+E-road/motorway/expressway and blue national/regional plates in ETS2), pictogram markers for fuel,
+service, rest stops, and weigh stations, and every delivery company's real in-game name and logo at
+its marker. ATS also shows a green advance-guide next-turn sign in the map's bottom-right corner
+while a route is active — which way the next turn goes and how far off it is — toggleable from the
+map's own toolbar (ETS2 support planned).
 
 **LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
 browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs
