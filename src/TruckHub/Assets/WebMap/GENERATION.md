@@ -128,6 +128,57 @@ generated 2026-08-30/31, vs. this run):
 `company-logos.zip` (the flat per-token PNG bundle) was deliberately left untouched - the logo artwork
 itself didn't change, only marker positions/counts (covered by `company-tiles.zip` above).
 
+## Re-generated for South Dakota DLC (2026-09-24)
+
+Triggered by ATS's South Dakota map-expansion DLC (`dlc_sd.scs`) releasing today, bringing the
+installed DLC set to 20 map DLCs (base + Nevada, Arizona, New Mexico, Oregon, Washington, Utah,
+Idaho, Colorado, Wyoming, Texas, Kansas, Montana, Oklahoma, Nebraska, Arkansas, Missouri, Iowa,
+Louisiana, Illinois, **South Dakota**). Full pipeline re-run end to end (ATS only - ETS2's
+`europe-*` parser output and all `ets2-*`/`company-logos.zip` files were never touched, confirmed
+by timestamp identical before and after this run).
+
+**No parser patch was needed this time** - South Dakota's `def`/map data parsed cleanly through the
+existing (Idaho-fix-patched) `processSpeedLimitJson` and the rest of `packages/clis/parser` with no
+crashes or new assertion failures. Only routine, pre-existing-category warnings appeared (a handful
+of `has no matching CityArea items` / `no localized name for @@la-83@@` lines, same kind seen on
+every prior run, unrelated to South Dakota).
+
+Before -> after (post-1.61 baseline, generated 2026-09-15, vs. this run):
+
+- Parser: `usa-companies.json` 2114 -> 2186 entries, `usa-roads.json` 219176 -> 224870, `usa-cities.json`
+  -> 289 entries (includes Sioux Falls, Rapid City, Pierre, Aberdeen, Watertown, Mitchell, Brookings,
+  Spearfish, Yankton, Huron), `usa-prefabs.json` -> 84855, `usa-nodes.json` -> 917257.
+- Generator (`ats.geojson`): 184207 -> 190133 features. (Benign new warning: `Unknown usa dlc guards
+  Set(3) { 58, 59, 65 }` - unrecognized DLC-guard IDs, almost certainly South Dakota's new guard
+  values; does not affect output, roads/features render the same either way.)
+- Orphaned-road filter: 190133 -> 173746 features. 123118 roads total, 106731 kept / 16387 dropped as
+  orphaned fragments (13.3%, same ratio as prior runs' ~13.6%).
+- Base tiling (`out/tiles/pbf`): 95892 tiles (was 92311), 85,840,425 bytes (~81.9MB) zipped - entry
+  count in `tiles.zip` verified to match the on-disk tile-file count exactly (95892 = 95892) after the
+  mandatory `rm -rf out/tiles/pbf` before retiling.
+- `extract-map-features.ts`: 1968 road-signs (was 1921), 6389 poi-facilities (was 6202; 2143 car-only
+  gas stations excluded, was 2067), 2186 company-logos (was 2114), 21 state-labels (was 21 - South
+  Dakota added, list now includes it by name; total count coincidentally unchanged from the 1.61
+  baseline).
+- Overlay tiling: poi-facilities 8940 tiles (1.7MB, was 8637/1.7MB), road-signs 9223 tiles (1.7MB, was
+  8970/1.6MB), company-logos 8306 tiles (1.7MB, was 8043/1.7MB).
+- Route graph (see sibling `Assets/RouteGraph/GENERATION.md` for the full breakdown): 2263159 routable
+  nodes / 3026814 directed edges (was 2195118 / 2935795), **2186/2186 companies resolved (100%)**, was
+  2107/2114 = 99.67%.
+
+`tiles.zip` was built via PowerShell's `[System.IO.Compression.ZipFile]`/`ZipArchiveMode.Create` with
+manually forward-slash-normalized entry names (`rel.Replace('\', '/')`) - `zip-dir.mjs`'s adm-zip
+backend was expected to hit the same hard ZIP64 `ERR_OUT_OF_RANGE` crash it hit at ~92K entries on the
+1.61 run, now at 95892 entries, so the PowerShell workaround was used directly rather than re-confirming
+the adm-zip crash first. `Compress-Archive` was avoided as before (backslash paths break the
+`{z}/{x}/{y}.pbf` tile consumers). Verified: zip entry count (95892) matches the on-disk `.pbf` file
+count (95892) exactly, and a sampled entry name (`10/172/400.pbf`) confirmed forward slashes.
+
+`company-logos.zip` (the flat per-token PNG bundle) was deliberately left untouched - checked
+`company-logos.json`'s 219 unique company tokens against `out/parser/icons/*.png` and every single one
+already had an extracted PNG, so South Dakota introduced zero brand-new company tokens needing new
+artwork.
+
 ## Map richness (2026-08-31): POIs, city labels, state borders, highway shields
 
 Added directly on top of data already present in `ats.geojson`/the tiles - `truckermudgeon`'s own

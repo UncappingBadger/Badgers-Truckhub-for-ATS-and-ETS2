@@ -191,3 +191,55 @@ Before -> after (pre-1.61 baseline vs. this run):
   `RoutingGraph.cs`'s `archive.GetEntry(...)` lookups).
 - Company resolution: 2107/2114 resolved via own prefab / snapped-to-main-network (99.67%, was
   2093/2096 = 99.86% - company count itself grew 2096 -> 2114 with the 1.61 update).
+
+## Re-generated for South Dakota DLC (2026-09-24)
+
+Triggered by ATS's South Dakota map-expansion DLC (`dlc_sd.scs`) releasing today. Re-run alongside
+the sibling `Assets/WebMap` regeneration (see its own `GENERATION.md`) - both read `usa-*` parser
+output from the same `out/parser` run, and no parser patch was needed this time (South Dakota's data
+parsed cleanly through the existing Idaho-fix-patched `processSpeedLimitJson`, no crashes). ATS only;
+ETS2's `europe-*` parser output and `ets2-route-graph.zip` were never touched (confirmed by identical
+timestamps before and after this run).
+
+Straight-chord prefab fallback confirmed still in effect (not the 2026-09-08 Hermite-spline attempt
+that was reverted the next day - see above): the live `build-route-graph.mjs` source's fallback-edge
+loop (the `for (const prefab of prefabs)` block building `heading(a, b)` edges) has no spline code,
+only the historical comment block above it documenting the revert.
+
+Before -> after (post-1.61 baseline vs. this run):
+
+- `extract-prefab-curves.ts`: 368495 -> 379271 curved connections.
+- `extract-road-curves.ts`: 219176 -> 224870 road curves (999297 total points, avg 4.4/road).
+- `build-route-graph.mjs`: 140031 -> 142962 fallback straight-line edges (prefab boundary-node pairs
+  curve tracing didn't cover - same order of magnitude, expected for South Dakota's new prefabs). One-way
+  roads: 79835 forward-only / 4 backward-only (was 78127/4), 656 kept bidirectional (no lanes recorded
+  either side - data anomaly, not new).
+- Result: **2263159 routable nodes / 3026814 directed edges** (was 2195118 / 2935795). `nodes.bin`
+  18.1MB (17.3MB reported by the script, filesystem shows 18,105,272 bytes) + `edges.bin` 48.4MB
+  (46.2MB reported, filesystem shows 48,429,024 bytes) + `companies.json` 156,765 bytes (153KB) =
+  ~63.6MB uncompressed, 44,619,419 bytes (~42.6MB) zipped (`route-graph.zip`, flat `nodes.bin`/
+  `edges.bin`/`companies.json` entries at the zip root, matching `RoutingGraph.cs`'s
+  `archive.GetEntry(...)` lookups).
+- Company resolution: **2186 / 2186 resolved (100%)** - via own prefab: 2186, via own node: 0, snapped
+  to main network: 96, unresolved: 0. A genuine improvement over 1.61's 99.67% (2107/2114), not just
+  the company count growing - every single company this run resolved either directly through its own
+  driveway prefab or via the existing 300m snap-to-main-network fallback.
+
+Sanity-checked with `test-route.mjs` and `test-route-batch.mjs` (both default to `out/route-graph`,
+already pointing at the fresh data):
+
+- `test-route.mjs` (topeka/flv_food_str -> dodge_city/jns_rail_str): straight-line 20.6km, found road
+  route 780 nodes / 28.0km, 1757 iterations, 123ms - no red flags.
+- `test-route-batch.mjs` (60 random company pairs): **60 found, 0 no-path, 0 bailed** - a clean 100%
+  resolution rate on this sample (better than the small "few percent no-path" baseline expected per
+  the weak-vs-strong-connectivity design notes above).
+- South-Dakota-specific spot checks (ad hoc script, same A* design, same graph): confirmed 68
+  companies now resolve across 9 South Dakota cities (Sioux Falls, Rapid City, Pierre, Aberdeen,
+  Watertown, Mitchell, Brookings, Spearfish, Yankton). Five sample routes, including two crossing
+  South Dakota's state border into pre-existing map data, all found cleanly with no "no route found"
+  and no suspiciously long detours (straight-line vs. road-route ratios all reasonable):
+  - Sioux Falls -> Rapid City: straight 24.9km, road 27.3km (561 nodes)
+  - Pierre -> Sioux Falls: straight 14.3km, road 19.4km (389 nodes)
+  - Rapid City -> Watertown: straight 24.5km, road 34.3km (736 nodes)
+  - Sioux Falls -> Omaha (SD -> NE border crossing): straight 14.0km, road 20.6km (610 nodes)
+  - Rapid City -> Cheyenne (SD -> WY border crossing): straight 15.5km, road 42.2km (2419 nodes)

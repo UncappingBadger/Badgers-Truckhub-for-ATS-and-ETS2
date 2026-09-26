@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.1 - 2026-09-26
+
+### Maintenance
+- GPS map/route data refreshed for ATS's South Dakota map-expansion DLC - new roads, cities
+  (Sioux Falls, Rapid City, Pierre, and more), companies, and highway signage are now covered.
+
 ## v2.2.0 - 2026-09-15
 
 ### Added
