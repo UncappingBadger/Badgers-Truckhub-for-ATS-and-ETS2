@@ -55,8 +55,11 @@ public static class GameLocator
     }
 
     /// <summary>
-    /// Combines auto-detection with manual overrides. A manual path, if set and valid, always wins
-    /// for that game over whatever auto-detect finds.
+    /// Combines auto-detection with manual overrides. A manual path, if set and it actually looks
+    /// like a game install (LooksLikeValidInstall, not just Directory.Exists), always wins for that
+    /// game over whatever auto-detect finds - otherwise a stale/wrong manual path (pointing at some
+    /// other folder that happens to exist) would silently shadow a perfectly good auto-detected
+    /// install instead of falling back to it.
     /// </summary>
     public static List<GameInstall> FindInstalls(string? manualEts2Path = null, string? manualAtsPath = null)
     {
@@ -71,7 +74,7 @@ public static class GameLocator
         foreach (var game in Games)
         {
             var manualPath = manualByGame[game.Game];
-            if (!string.IsNullOrWhiteSpace(manualPath) && Directory.Exists(manualPath))
+            if (!string.IsNullOrWhiteSpace(manualPath) && LooksLikeValidInstall(manualPath))
             {
                 found.Add(new GameInstall(game.Game, game.DisplayName, manualPath, IsManual: true));
                 continue;

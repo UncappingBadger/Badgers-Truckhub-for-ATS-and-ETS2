@@ -34,7 +34,8 @@ what and why).*
 - **Gear & RPM** — gear in its own box, showing the actual gear number for manual/H-shifter trucks
   (see H-shifter calibration below) or **D / N / P / R** automatically if you're driving an automatic;
   RPM as a gauge that fills toward the engine's actual redline and changes colour as it gets close
-- **Job info** — route, cargo and weight, payout, distance travelled, time left
+- **Job info** — route, cargo and weight, payout, distance travelled, time left; covers ATS's
+  Road Trip DLC "Quick Job" personal-car courier jobs the same as regular freight
 - **Fuel & AdBlue gauge** — a real analogue-style dial for fuel with a needle that sweeps to the actual
   level (not a snap-to-value jump), plus a 4-segment level bar for AdBlue built into the same gauge
   face on trucks that have one
@@ -59,9 +60,9 @@ overlay — the window reflows to fit whatever's left on.
 
 Just run `TruckHub.exe`. That's it.
 
-It automatically finds your ETS2 / ATS install(s) via Steam and installs the small telemetry plugin
-it needs — no manual setup required. If a game isn't found automatically (a non-Steam copy, or a
-drive Steam doesn't see), open Settings and point it at the install folder yourself.
+It automatically finds your ETS2 / ATS install(s) via Steam and installs the small telemetry
+plugins it needs — no manual setup required. If a game isn't found automatically (a non-Steam
+copy, or a drive Steam doesn't see), open Settings and point it at the install folder yourself.
 
 One thing to check in-game: **Options → Gameplay → HUD → Route Advisor: speed limit** needs to be
 turned on, since that's what feeds the speed limit sign.
@@ -171,9 +172,12 @@ when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
 
 ## Credits & third-party software
 
-TruckHub's telemetry reading is built on [RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin)
-(MIT), and the live GPS map is rendered with [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)
-(BSD-3-Clause) — both distributed as part of TruckHub. The GPS map's underlying tile and route
+TruckHub's primary telemetry source is its own SCS Telemetry Hub plugin, built on
+[AptS-1547/scs-sdk-crates](https://github.com/AptS-1547/scs-sdk-crates) (MIT) — it's what reads
+data the older [RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin) (MIT, also
+still bundled as a dormant fallback) never learned to, including ATS's Road Trip DLC Quick Job
+data. The live GPS map is rendered with [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)
+(BSD-3-Clause) — all distributed as part of TruckHub. The GPS map's underlying tile and route
 data were generated using [TruckSim Maps](https://github.com/truckermudgeon/maps) (GPL-3.0) as a
 development-time tool, and its routing engine was designed after studying
 [TruckNav-Sim](https://github.com/Rares-Muntean/TruckNav-Sim) (GPL-3.0) as a reference, with no

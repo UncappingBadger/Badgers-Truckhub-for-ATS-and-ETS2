@@ -85,8 +85,11 @@ namespace SCSSdkClient {
         public void Disconnect() {
             Hooked = false;
 
-            _memoryMappedView.Dispose();
-            _memoryMappedHandle.Dispose();
+            // Connect() can leave these null if CreateOrOpen threw (Hooked stays false in that
+            // case) - null-conditional so Disconnect() is safe to call even when Connect() never
+            // actually succeeded, not just when tearing down a live connection.
+            _memoryMappedView?.Dispose();
+            _memoryMappedHandle?.Dispose();
         }
 
         /// <summary>

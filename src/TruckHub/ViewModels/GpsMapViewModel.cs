@@ -181,12 +181,29 @@ public sealed class GpsMapViewModel : IDisposable
             return; // no active route to trim/check.
         }
 
+        // Distance to the nearest point on the route POLYLINE (clamped projection onto each
+        // segment), not just the nearest route VERTEX - a long dead-straight highway edge (see
+        // build-route-graph.mjs: a road with zero real curvature collapses to a single edge, just
+        // its two endpoint nodes, no interior points) can easily be several hundred meters long, so
+        // the truck sitting exactly mid-segment on real road was up to half that edge's length from
+        // the nearest vertex - well past OffRouteThresholdMeters even though it never left the route.
+        // Confirmed live (2026-09-26): a Waterloo->Denver job's plains-state highway stretches
+        // produced repeated ~200-215m (up to 892m) "off route" false positives every 15-90s for the
+        // entire early part of the drive, each one triggering a full graph recompute - exactly the
+        // input/display lag reported that session.
         var nearestIndex = 0;
         var nearestDistSq = double.MaxValue;
-        for (var i = 0; i < route.Count; i++)
+        for (var i = 0; i < route.Count - 1; i++)
         {
-            var dx = route[i].X - x;
-            var dz = route[i].Z - z;
+            var ax = route[i].X;
+            var az = route[i].Z;
+            var abx = route[i + 1].X - ax;
+            var abz = route[i + 1].Z - az;
+            var lenSq = abx * abx + abz * abz;
+            var t = lenSq > 0 ? ((x - ax) * abx + (z - az) * abz) / lenSq : 0.0;
+            t = Math.Clamp(t, 0.0, 1.0);
+            var dx = ax + t * abx - x;
+            var dz = az + t * abz - z;
             var distSq = dx * dx + dz * dz;
             if (distSq < nearestDistSq)
             {

@@ -12,11 +12,23 @@ namespace TruckHub.Services;
 /// </summary>
 public sealed class TelemetryService : IDisposable
 {
-    private readonly SCSSdkTelemetry _telemetry;
+    /// <summary>
+    /// Switches the telemetry source from RenCloud's shared-memory plugin (legacy) to the independent
+    /// SCS Telemetry Hub plugin's local HTTP/SSE feed (see F:\Claude Projects\ScsTelemetryHub) - built
+    /// to see ATS's Road Trip DLC "Quick Job" data, which RenCloud's plugin (unmaintained since 2023)
+    /// never will. Flipped to true after a full live ATS+ETS2 test session confirmed parity (both
+    /// truck and car mode, both games) - flip back to false to fall back to RenCloud instantly if
+    /// something regresses, same dormant-flag pattern as GameMapProfile.Ets2Enabled.
+    /// </summary>
+    private const bool UseScsTelemetryHub = true;
+
+    private readonly SCSSdkTelemetry? _telemetry;
+    private readonly ScsTelemetryHubClient? _hubClient;
     private readonly SynchronizationContext _uiContext;
 
     private TelemetrySnapshot _lastSnapshot = TelemetrySnapshot.Disconnected;
     private bool _lastSdkActive;
+    private bool _lastOnJob;
 
     public event Action<TelemetrySnapshot>? SnapshotUpdated;
 
@@ -39,14 +51,18 @@ public sealed class TelemetryService : IDisposable
         _uiContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException("TelemetryService must be constructed on a thread with a SynchronizationContext (e.g. the UI thread).");
 
+        if (UseScsTelemetryHub)
+        {
+            _hubClient = new ScsTelemetryHubClient();
+            _hubClient.SnapshotUpdated += snapshot => UpdateCommon(snapshot);
+            _hubClient.GameplayEvent += OnHubGameplayEvent;
+            _hubClient.Start();
+            return;
+        }
+
         _telemetry = new SCSSdkTelemetry(pollIntervalMs);
         _telemetry.Data += OnData;
 
-        _telemetry.JobStarted += (_, _) => AppLogger.Log(
-            $"Job started: {_lastSnapshot.CompanySource}/{_lastSnapshot.CitySource} -> " +
-            $"{_lastSnapshot.CompanyDestination}/{_lastSnapshot.CityDestination}, " +
-            $"cargo={_lastSnapshot.CargoName} {_lastSnapshot.CargoMassKg / 1000:0}T, " +
-            $"income={_lastSnapshot.Income}, plannedKm={_lastSnapshot.PlannedDistanceKm}");
         _telemetry.JobDelivered += (_, _) =>
         {
             AppLogger.Log("Job delivered");
@@ -66,15 +82,57 @@ public sealed class TelemetryService : IDisposable
         _telemetry.RefuelPayed += (_, _) => AppLogger.Log("Refuel paid");
     }
 
-    private void OnData(SCSTelemetry data, bool newTimestamp)
+    /// <summary>Named gameplay events from ScsTelemetryHubClient - the new-source equivalent of the
+    /// RenCloud-specific Fined/Tollgate/Ferry/Train/JobDelivered/JobCancelled events wired above.
+    /// refuel_started/ended/paid have no official SDK signal either (confirmed: SDK 1.14's gameplay-
+    /// event catalog has none) - the plugin ports RenCloud's own tick-based fuel-delta heuristic
+    /// (scs-telemetry.cpp's telemetry_frame_start, found via a background research agent) directly,
+    /// so these fire on the same conditions RenCloud's RefuelStart/End/Payed always have.</summary>
+    private void OnHubGameplayEvent(string name)
     {
-        var snapshot = Convert(data);
+        switch (name)
+        {
+            case "job_delivered":
+                AppLogger.Log("Job delivered");
+                _uiContext.Post(_ => JobDelivered?.Invoke(), null);
+                break;
+            case "job_cancelled":
+                AppLogger.Log("Job cancelled");
+                _uiContext.Post(_ => JobCancelled?.Invoke(), null);
+                break;
+            case "player_fined": AppLogger.Log("Fined by police"); break;
+            case "tollgate_paid": AppLogger.Log("Tollgate paid"); break;
+            case "ferry_used": AppLogger.Log("Ferry used"); break;
+            case "train_used": AppLogger.Log("Train used"); break;
+            case "refuel_started": AppLogger.Log("Refueling started"); break;
+            case "refuel_ended": AppLogger.Log("Refueling ended"); break;
+            case "refuel_paid": AppLogger.Log("Refuel paid"); break;
+        }
+    }
 
+    private void OnData(SCSTelemetry data, bool newTimestamp) => UpdateCommon(Convert(data));
+
+    /// <summary>Single place for everything that must behave identically regardless of which
+    /// telemetry source is active: connected/disconnected logging, job-started detection (an edge
+    /// on OnJob rather than a RenCloud-specific event, so it works the same for both sources), and
+    /// publishing the snapshot itself.</summary>
+    private void UpdateCommon(TelemetrySnapshot snapshot)
+    {
         if (snapshot.SdkActive != _lastSdkActive)
         {
             AppLogger.Log(snapshot.SdkActive ? $"Connected to {snapshot.Game}" : "Disconnected (game closed or SDK inactive)");
             _lastSdkActive = snapshot.SdkActive;
         }
+
+        if (snapshot.OnJob && !_lastOnJob)
+        {
+            AppLogger.Log(
+                $"Job started: {snapshot.CompanySource}/{snapshot.CitySource} -> " +
+                $"{snapshot.CompanyDestination}/{snapshot.CityDestination}, " +
+                $"cargo={snapshot.CargoName} {snapshot.CargoMassKg / 1000:0}T, " +
+                $"income={snapshot.Income}, plannedKm={snapshot.PlannedDistanceKm}");
+        }
+        _lastOnJob = snapshot.OnJob;
 
         _lastSnapshot = snapshot;
         _uiContext.Post(_ => SnapshotUpdated?.Invoke(snapshot), null);
@@ -239,7 +297,11 @@ public sealed class TelemetryService : IDisposable
 
     public void Dispose()
     {
-        _telemetry.Data -= OnData;
-        _telemetry.Dispose();
+        if (_telemetry is not null)
+        {
+            _telemetry.Data -= OnData;
+            _telemetry.Dispose();
+        }
+        _hubClient?.Dispose();
     }
 }

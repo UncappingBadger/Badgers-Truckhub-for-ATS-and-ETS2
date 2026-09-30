@@ -42,6 +42,141 @@ is built on this library. Full license text: `src/TruckHub/Telemetry/SCSSdkClien
 > IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 > CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+### SCS Telemetry Hub
+Source: in-house (same author as TruckHub, not yet published as a separate public repo)
+License: MIT
+
+TruckHub's primary telemetry source (`scs_telemetry_hub.dll`, auto-installed alongside the SCS SDK
+Client plugin above). Built to add telemetry the unmaintained SCS SDK Client plugin never will,
+including ATS's Road Trip DLC "Quick Job" personal-car courier jobs. Publishes the same live data
+as an SDK Client-compatible plugin but over a local JSON/HTTP+SSE feed instead of shared memory; the
+SDK Client plugin stays installed alongside it as the dormant fallback path (`TelemetryService.
+UseScsTelemetryHub`). It's our own code, not third-party, but it's built on the open-source crates
+below, which are compiled directly into the distributed binary.
+
+#### scs-sdk-plugin / scs-sdk / scs-sdk-sys / scs-sdk-plugin-macros
+Source: https://github.com/AptS-1547/scs-sdk-crates
+License: MIT (also available under Apache-2.0; MIT reproduced here)
+
+The safe Rust framework SCS Telemetry Hub is built on - turns SCS Software's official Telemetry
+SDK C ABI into typed, safe Rust bindings and provides the plugin lifecycle/callback runtime. Also
+vendors the official SCS Telemetry SDK 1.14 headers as its own third-party dependency (see below).
+
+> MIT License
+>
+> Copyright (c) 2026 AptS-1547
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+#### SCS Telemetry SDK 1.14
+Source: SCS Software's official developer SDK (distributed via `AptS-1547/scs-sdk-crates`'
+`third-party/scs_sdk_1_14/`, downloadable independently from
+https://modding.scssoft.com/wiki/Documentation/Engine/SDK/Telemetry)
+License: MIT
+
+The official interface definitions (channel/configuration/event names and types) SCS Telemetry Hub
+targets. Not directly vendored in TruckHub - consumed indirectly through the crate above - but
+reproduced here since its own license requires the notice travel with anything built against it.
+
+> SCS SDK
+> Copyright (C) 2016 SCS Software
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+#### serde / serde_json
+Source: https://github.com/serde-rs/serde, https://github.com/serde-rs/json
+License: MIT (also available under Apache-2.0; MIT reproduced here)
+
+Used by SCS Telemetry Hub to serialize its live state to JSON.
+
+> Permission is hereby granted, free of charge, to any
+> person obtaining a copy of this software and associated
+> documentation files (the "Software"), to deal in the
+> Software without restriction, including without
+> limitation the rights to use, copy, modify, merge,
+> publish, distribute, sublicense, and/or sell copies of
+> the Software, and to permit persons to whom the Software
+> is furnished to do so, subject to the following
+> conditions:
+>
+> The above copyright notice and this permission notice
+> shall be included in all copies or substantial portions
+> of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+> ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+> TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+> PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+> SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+> CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+> OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+> IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+> DEALINGS IN THE SOFTWARE.
+
+#### tiny_http
+Source: https://github.com/tiny-http/tiny-http
+License: MIT (also available under Apache-2.0; MIT reproduced here)
+
+The local HTTP server SCS Telemetry Hub uses to publish its `/snapshot` and `/stream` endpoints.
+
+> Copyright (c) 2014-2019 The tiny-http contributors
+>
+> Permission is hereby granted, free of charge, to any
+> person obtaining a copy of this software and associated
+> documentation files (the "Software"), to deal in the
+> Software without restriction, including without
+> limitation the rights to use, copy, modify, merge,
+> publish, distribute, sublicense, and/or sell copies of
+> the Software, and to permit persons to whom the Software
+> is furnished to do so, subject to the following
+> conditions:
+>
+> The above copyright notice and this permission notice
+> shall be included in all copies or substantial portions
+> of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+> ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+> TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+> PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+> SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+> CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+> OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+> IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+> DEALINGS IN THE SOFTWARE.
+
 ### MapLibre GL JS
 Source: https://github.com/maplibre/maplibre-gl-js (v6.6.0)
 License: BSD-3-Clause, plus bundled code from mapbox-gl-js, glfx.js, and d3-color (see below)

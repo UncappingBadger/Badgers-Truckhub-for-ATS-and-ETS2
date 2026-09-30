@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.3.0 - 2026-09-30
+
+### Added
+- New primary telemetry source: TruckHub's own SCS Telemetry Hub plugin, replacing the
+  unmaintained RenCloud plugin (no updates since September 2023) as the active data source.
+  Unlocks job info and Trip Needs & Economy for ATS's Road Trip DLC "Quick Job" personal-car
+  courier jobs, which the old plugin has no way to ever support. Dashboard telemetry, GPS
+  routing, and refuel detection all carry over with full parity, on both truck and car mode, in
+  both games. The old plugin stays installed as a dormant fallback.
+
+### Fixed
+- The installer only ever deployed the old RenCloud plugin - the new one was never actually
+  copied into either game's plugins folder for anyone except this machine's own dev setup. Fixed
+  before this reached anyone: both plugins now install side by side automatically, same as
+  always, no extra steps.
+- A manually-set game install path that pointed at a folder that existed but wasn't actually a
+  game install (e.g. a stale path left over from earlier troubleshooting) silently overrode a
+  perfectly good auto-detected install, including for plugin installation - found while testing
+  the fix above. Manual paths are now validated the same way the Settings screen already warns
+  about, and fall back to auto-detection when they don't look right.
+- Hardened against a rare but real risk: the telemetry client's shutdown path now always
+  releases its shared-memory handle, even on an interrupted startup; the new plugin's local HTTP
+  server now caps concurrent connections instead of spawning one thread per connection
+  unbounded. Neither was linked to any specific bug, but both closed real gaps found during a
+  crash-safety audit prompted by unrelated game crashes (traced to third-party mods, not
+  TruckHub - see below).
+
+### Maintenance
+- Investigated a recurring `amtrucks.exe` hard crash reported during a convoy session. Windows
+  Event Log forensics and two rounds of code audit (this plugin and the C# app) found nothing in
+  TruckHub's own code that could cause it - the crash signature also reproduced in singleplayer,
+  pointing at a multi-plugin interaction among other, unrelated third-party mods instead. Root
+  cause outside TruckHub's control; the hardening above shipped anyway as cheap insurance.
+
 ## v2.2.1 - 2026-09-26
 
 ### Maintenance

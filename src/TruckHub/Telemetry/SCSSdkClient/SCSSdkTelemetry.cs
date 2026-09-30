@@ -37,11 +37,15 @@ namespace SCSSdkClient {
 #if LOGGING
         public void Dispose() {
             _updateTimer?.Dispose();
+            SharedMemory?.Disconnect();
             Log.SaveShutdown();
         }
 #else
 
-        public void Dispose() => _updateTimer?.Dispose();
+        public void Dispose() {
+            _updateTimer?.Dispose();
+            SharedMemory?.Disconnect();
+        }
 
 #endif
 
