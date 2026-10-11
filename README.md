@@ -64,6 +64,10 @@ It automatically finds your ETS2 / ATS install(s) via Steam and installs the sma
 plugins it needs — no manual setup required. If a game isn't found automatically (a non-Steam
 copy, or a drive Steam doesn't see), open Settings and point it at the install folder yourself.
 
+If another tool has installed its own build of `scs-telemetry.dll` and left a manifest (a `.json`
+naming that file) beside it in the plugins folder, TruckHub leaves that file alone rather than
+overwriting it with its bundled copy.
+
 One thing to check in-game: **Options → Gameplay → HUD → Route Advisor: speed limit** needs to be
 turned on, since that's what feeds the speed limit sign.
 

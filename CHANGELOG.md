@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.3.1 - 2026-10-11
+
+### Fixed
+- The time-to-delivery readout on the main card never counted down when TruckHub was using the
+  SCS Telemetry Hub (v2.3.0's default source): it showed one fixed number for the whole job,
+  unaffected by driving or resting. It now shows the real time left - falling as the game clock
+  advances, jumping when you rest, and reading "Late ..." once the deadline has passed - the same
+  as it did with the previous plugin. Affects v2.3.0 only.
+- TruckHub no longer overwrites a custom build of `scs-telemetry.dll` that another tool installed.
+  If a manifest (a `.json` naming that file) sits beside it in the plugins folder, TruckHub now
+  leaves the file alone instead of replacing it with its bundled copy on every launch. A note is
+  written to TruckHub's log when that happens. Nothing changes for installs without such a manifest.
+
+### Changed
+- Bundled SCS Telemetry Hub plugin updated. It now shuts down properly when the game closes (open
+  streams end cleanly and its network port is released immediately), and stays loaded until the
+  game process exits, which removes a rare access violation that was logged at game exit. It also
+  no longer writes over a hundred "wheel index not valid" error lines to the game log on every
+  start, and writes a clear warning to the game log if its port is already in use.
+
 ## v2.3.0 - 2026-09-30
 
 ### Added

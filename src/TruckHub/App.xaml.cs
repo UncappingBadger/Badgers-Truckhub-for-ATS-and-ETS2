@@ -35,6 +35,11 @@ public partial class App : Application
                 AppLogger.Log(result.Installed
                     ? $"Plugin installed for {result.GameName}"
                     : $"Plugin install FAILED for {result.GameName}: {result.Error}");
+
+                if (result.Note != null)
+                {
+                    AppLogger.Log($"Plugin note for {result.GameName}: {result.Note}");
+                }
             }
         });
     }

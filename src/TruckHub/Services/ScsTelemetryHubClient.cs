@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using TruckHub.Models;
@@ -131,6 +132,24 @@ public sealed class ScsTelemetryHubClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Minutes left to deliver (negative once late). The SDK's delivery_time is an ABSOLUTE in-game
+    /// deadline on the same clock as game.time, so remaining = deadline - game time; it only moves
+    /// as the game clock does (driving, resting). Same guard as the legacy shared-memory path
+    /// (SCSTelemetry.SetDeliveryTime) so both telemetry sources agree: no deadline or no game
+    /// clock yet means 0, never a deadline-sized number.
+    /// </summary>
+    private static int RemainingDeliveryMinutesFor(HubJob job, uint gameTimeMinutes)
+    {
+        if (job.DeliveryDeadlineGameMinutes == 0 || gameTimeMinutes == 0)
+        {
+            return 0;
+        }
+
+        var remaining = (long)job.DeliveryDeadlineGameMinutes - gameTimeMinutes;
+        return (int)Math.Clamp(remaining, int.MinValue, int.MaxValue);
+    }
+
     private static TelemetrySnapshot BuildSnapshot(HubSnapshotMessage msg)
     {
         var data = msg.Data;
@@ -194,7 +213,7 @@ public sealed class ScsTelemetryHubClient : IDisposable
             WarnOilPressure = data.OilPressureWarning,
             WarnWaterTemperature = data.WaterTemperatureWarning,
             WarnBatteryVoltage = data.BatteryVoltageWarning,
-            RemainingDeliveryMinutes = (int)(job.DeliveryTimeSeconds / 60),
+            RemainingDeliveryMinutes = RemainingDeliveryMinutesFor(job, data.GameTimeMinutes),
             RestTimeMinutes = data.NextRestStopMinutes,
             Rpm = data.EngineRpm,
             EngineRpmMax = truckSpec.RpmLimit,
@@ -319,7 +338,10 @@ public sealed class ScsTelemetryHubClient : IDisposable
         public string DestinationCompany { get; set; } = "";
         public string DestinationCompanyId { get; set; } = "";
         public ulong Income { get; set; }
-        public uint DeliveryTimeSeconds { get; set; }
+        // The hub publishes the SDK's delivery_time under the (misleading, kept for wire compatibility)
+        // name "delivery_time_seconds": it is the absolute in-game deadline in game MINUTES, not a duration.
+        [JsonPropertyName("delivery_time_seconds")]
+        public uint DeliveryDeadlineGameMinutes { get; set; }
         public uint PlannedDistanceKm { get; set; }
     }
 
