@@ -52,7 +52,8 @@ what and why).*
 - **Job logbook** — a running record of every job you deliver this session: pickup, drop-off, mileage,
   and payout, with a running total (see "Using the job logbook" below)
 - **Live GPS map** — a real, road-following map of wherever you're driving, with a route to your
-  current job that reroutes if you go off track (see "The GPS map" below)
+  current job; if you leave the route it warns you and lets you choose when to reroute
+  (see "The GPS map" below)
 - **Extended Instruments (EXT)** — a second panel for everything the main dashboard doesn't have room
   for: oil/water temps, oil pressure, battery voltage, brake air pressure and temp, suspension
   deflection per wheel, and more (see "The EXT window" below)
@@ -62,7 +63,9 @@ overlay — the window reflows to fit whatever's left on.
 
 ## Installing it
 
-Just run `TruckHub.exe`. That's it.
+Download `TruckHub.exe` (and the manual, if you want it) from the
+[latest release](https://github.com/UncappingBadger/Badgers-Truckhub-for-ATS-and-ETS2/releases/latest),
+then just run it. That's it: no installer.
 
 It automatically finds your ETS2 / ATS install(s) via Steam and installs its small telemetry
 plugin (`scs_telemetry_hub.dll`) — no manual setup required. If a game isn't found automatically
@@ -85,11 +88,13 @@ turned on, since that's what feeds the speed limit sign.
 - The **⚙ button** opens Settings, split into two tabs:
   - **App Configure** — check for updates, point TruckHub at a game install manually, calibrate
     gear numbers for an H-shifter truck, and point TruckHub at your mod folder manually if it's
-    somewhere nonstandard
+    somewhere nonstandard, choose whether
+    TruckHub's HUD and GPS map are drawn by the GPU or the CPU, and decide whether the GPS recomputes
+    its route automatically when you leave it
   - **UI Setup** — switch between MPH/KM-H, Tonnes/Lbs, and Litres/Gallons independently of each
     other; turn any HUD element on or off, including the speed sign, in-game clock, odometer, and
     current-speed gauge separately; and turn on the rest timer if you drive with fatigue simulation
-    enabled
+    enabled; the two speed alerts have their own switches and volume sliders here too
 - **GPS / LOG / EXT** — docked tabs for opening the GPS map, job logbook, and Extended Instruments
   window.
 
@@ -111,8 +116,8 @@ On the map itself: real MUTCD-style highway shields (Interstate/US Route/State R
 E-road/motorway/expressway and blue national/regional plates in ETS2), pictogram markers for fuel,
 service, rest stops, and weigh stations, and every delivery company's real in-game name and logo at
 its marker. A next-turn sign (green in ATS, European blue in ETS2) sits in the map's bottom-right corner
-while a route is active — which way the next turn goes and how far off it is, in the distances the game
-itself shows — toggleable from the map's own toolbar.
+while a route is active — which way the next turn goes and how far off it is, scaled to match the in-game
+GPS's distances (a turn past a change of road type can still read a little off) — toggleable from the map's own toolbar.
 
 **LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
 browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs
@@ -206,6 +211,8 @@ also check any time yourself with the **Check for Updates** button at the top of
 
 For a complete breakdown of every icon, gauge, and colour code — what each one means and exactly
 when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
+It also covers the GPS map, the EXT window, the job log, every setting, the mod load order and
+troubleshooting.
 
 ## Credits & third-party software
 
