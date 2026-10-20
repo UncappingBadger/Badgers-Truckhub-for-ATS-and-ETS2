@@ -10,24 +10,21 @@ namespace TruckHub.Services;
 public sealed record PluginInstallResult(string GameName, bool Installed, string? Error, string? Note = null);
 
 /// <summary>
-/// Drops the bundled telemetry plugin DLLs (embedded in this assembly) into each detected game's
-/// plugins folder so telemetry is available without the user ever touching a file browser.
-/// Installs both RenCloud's legacy plugin and TruckHub's own SCS Telemetry Hub plugin (see
-/// F:\Claude Projects\ScsTelemetryHub) - they coexist fine side by side. RenCloud's stays installed
-/// as a fallback/reference even though TelemetryService.UseScsTelemetryHub is the active source,
-/// since flipping that flag back to false (e.g. if the hub ever regresses) must not require a
-/// separate install step.
+/// Drops the bundled telemetry plugin (embedded in this assembly) into each detected game's plugins folder so
+/// telemetry is available without the user ever touching a file browser.
 ///
-/// Another tool may own one of those files: a custom build of scs-telemetry.dll installed with a
-/// sidecar manifest (a *.json in the plugins folder whose "TargetFileName" names the DLL) is left
-/// strictly alone - never overwritten, never created. Overwriting it would silently swap the
-/// user's build for ours on every launch. The hub plugin is TruckHub's own and unaffected.
+/// Only TruckHub's own SCS Telemetry Hub plugin is installed (see F:\Claude Projects\ScsTelemetryHub). Any other
+/// plugin already in a game's plugins folder - including an older RenCloud scs-telemetry.dll from earlier
+/// TruckHub versions - is never removed or modified here.
+///
+/// Another tool may own the file: if a sidecar manifest (a *.json in the plugins folder whose "TargetFileName"
+/// names the DLL) claims it, the file is left strictly alone - never overwritten, never created - so a user's
+/// own build is never silently swapped for ours on every launch.
 /// </summary>
 public static class PluginInstallerService
 {
     private static readonly (string FileName, string ResourceName)[] BundledPlugins =
     {
-        ("scs-telemetry.dll", "TruckHub.scs-telemetry.dll"),
         ("scs_telemetry_hub.dll", "TruckHub.scs_telemetry_hub.dll"),
     };
 

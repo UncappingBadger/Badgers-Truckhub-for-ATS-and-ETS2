@@ -153,6 +153,8 @@ import('./vendor/maplibre-gl.mjs')
     const lanSslPrompt = document.getElementById('lan-ssl-prompt');
     const lanNoSslBtn = document.getElementById('lan-no-ssl-btn');
     const lanUseSslBtn = document.getElementById('lan-use-ssl-btn');
+    const rerouteBtn = document.getElementById('reroute-btn');
+    const offRouteBanner = document.getElementById('off-route-banner');
 
     // On by default - a purely local display preference, not something that needs an opt-in the
     // way a networking feature like LAN Mode does.
@@ -220,6 +222,16 @@ import('./vendor/maplibre-gl.mjs')
       setRoute([]);
       if (window.chrome && window.chrome.webview) {
         window.chrome.webview.postMessage({ type: 'clearPin' });
+      }
+    });
+
+    // Reroute: only ever visible while the C# side says the truck is a mile or more off the route (the
+    // 'offRoute' message below). Asks the host to recompute from the truck's current position; the host
+    // answers by clearing the alert and pushing the new route. Remote LAN pages have no host to ask, and
+    // never receive the alert, so the button stays hidden there.
+    rerouteBtn.addEventListener('click', () => {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'reroute' });
       }
     });
 
@@ -550,7 +562,9 @@ import('./vendor/maplibre-gl.mjs')
     // Next-turn sign: real US advance-guide-sign styling (green - highway exit/turn guidance -
     // distinct from the Interstate shield's navy blue, which is reserved for route markers) with a
     // bold MUTCD-style advance-turn-arrow glyph and a distance readout, approved against a rendered
-    // mockup before this was wired in. Drawn straight onto the fixed #turn-sign canvas (a plain
+    // mockup before this was wired in. ETS2 gets the same sign in European blue (#0055a4, the same blue
+    // as that map's national/regional road plates) - blue is the direction-sign colour on German,
+    // Dutch and UK-motorway signs alike, so it reads as "European" without picking one country's style. Drawn straight onto the fixed #turn-sign canvas (a plain
     // screen-space overlay, not a MapLibre-anchored icon - it always sits in the same map-window
     // corner regardless of pan/zoom) rather than through the addImage/styleimagemissing path the
     // shields above use, since this isn't tied to a map coordinate at all.
@@ -577,7 +591,7 @@ import('./vendor/maplibre-gl.mjs')
       ctx.lineTo(0, r);
       ctx.quadraticCurveTo(0, 0, r, 0);
       ctx.closePath();
-      ctx.fillStyle = '#006747';
+      ctx.fillStyle = activeGame === 'ets2' ? '#0055a4' : '#006747';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -945,6 +959,9 @@ import('./vendor/maplibre-gl.mjs')
         } else if (msg.type === 'nextTurn') {
           lastTurn = msg.isRight == null ? null : { isRight: msg.isRight, distance: msg.distance };
           renderTurnSign();
+        } else if (msg.type === 'offRoute') {
+          rerouteBtn.classList.toggle('visible', !!msg.active);
+          offRouteBanner.classList.toggle('visible', !!msg.active);
         } else if (msg.type === 'lanStatus') {
           lanBtn.classList.toggle('active', msg.active);
           if (msg.active && msg.url) {

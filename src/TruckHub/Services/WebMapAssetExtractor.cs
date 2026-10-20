@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -53,6 +54,23 @@ public static class WebMapAssetExtractor
         ("TruckHub.WebMap.company-logos.zip", "company-logos"),
     };
 
+    /// <summary>True for the embedded resources this class actually unpacks: the loose web assets
+    /// ("TruckHub.WebMap/...") and the tile/logo zips ("TruckHub.WebMap.*.zip"). Everything else in the
+    /// assembly - the compiled XAML ("TruckHub.g.resources"), the plugin DLLs, the route graph - is
+    /// irrelevant to what is on disk under WebMap.</summary>
+    internal static bool IsWebMapResource(string name) =>
+        name.StartsWith("TruckHub.WebMap", StringComparison.Ordinal);
+
+    /// <summary>The "did the map's content change" fingerprint: name + byte length of each WebMap
+    /// resource only, order-independent. Compiled-XAML (TruckHub.g.resources) changes length on every UI
+    /// edit, which used to look like "the map changed" and trigger a ~5 minute full re-extraction.</summary>
+    internal static string ComputeVersion(IEnumerable<(string Name, long Length)> resources) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", resources
+                .Where(r => IsWebMapResource(r.Name))
+                .OrderBy(r => r.Name, StringComparer.Ordinal)
+                .Select(r => $"{r.Name}:{r.Length}")))));
+
     /// <summary>Extracts (or re-extracts, if the embedded content has changed since last time) the
     /// web assets and returns the folder they now live in.</summary>
     public static string EnsureExtracted()
@@ -69,13 +87,14 @@ public static class WebMapAssetExtractor
         // index.html) doesn't add or remove a resource, so a plain count comparison missed it and
         // kept serving the stale extracted copy. Length only reads embedded-resource stream
         // metadata, not the actual bytes, so this stays cheap even with tiles.zip in the mix.
+        // Only the map's own resources count (see ComputeVersion) - hashing EVERY resource made any
+        // unrelated rebuild, such as editing a Settings screen, force the full ~300,000-file unpack again.
         var versionMarkerPath = Path.Combine(targetDir, ".extracted-version");
-        var currentVersion = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            string.Join("|", resourceNames.OrderBy(n => n, StringComparer.Ordinal).Select(n =>
-            {
-                using var s = assembly.GetManifestResourceStream(n);
-                return $"{n}:{s!.Length}";
-            })))));
+        var currentVersion = ComputeVersion(resourceNames.Select(n =>
+        {
+            using var s = assembly.GetManifestResourceStream(n);
+            return (n, s!.Length);
+        }));
         if (File.Exists(versionMarkerPath) && File.ReadAllText(versionMarkerPath) == currentVersion)
         {
             return targetDir;

@@ -58,9 +58,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // really happens once, right after loading a save. Stick with the last real reading instead.
     private float _lastKnownConsumptionLPerKm;
 
-    // Distance traveled so far along the current job's route, tracked from our own baseline
-    // (see OnSnapshotUpdated) rather than the job's quoted PlannedDistanceKm.
-    private float? _initialNavigationDistanceMeters;
+    // Distance traveled so far along the current job's route, tracked from our own baseline (the
+    // job's total route length - see JobDistanceTracker, which also keeps it across restarts of the
+    // game or TruckHub) rather than the job's quoted PlannedDistanceKm.
+    private readonly JobDistanceTracker _jobDistance = new(new JobDistanceFileStore());
 
     // Fuel/AdBlue needle-gauge animation state - see FuelNeedleAngle/AdBlueLitSegments and
     // OnGaugeAnimationTick. Ticks independently of the telemetry poll rate so the sweep looks smooth
@@ -148,6 +149,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnJobDelivered()
     {
+        _jobDistance.JobEnded();
+
         if (_pendingLogEntry is not { } entry)
         {
             return;
@@ -161,7 +164,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(TotalMileageDisplay));
     }
 
-    private void OnJobCancelled() => _pendingLogEntry = null;
+    private void OnJobCancelled()
+    {
+        _jobDistance.JobEnded();
+        _pendingLogEntry = null;
+    }
 
     public bool UseMetric => _settings.UseMetric;
 
@@ -195,8 +202,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public int SpeedValue => ConvertSpeed(Math.Abs(_snapshot.SpeedKph));
 
-    // Green at/under the limit, amber up to 5 over, red beyond that - no limit data means nothing
-    // to compare against, so stay neutral rather than implying "you're fine" or "you're speeding".
+    // Green at/under the limit, amber up to AmberBandUnits over, red beyond that - no limit data means
+    // nothing to compare against, so stay neutral rather than implying "you're fine" or "you're
+    // speeding". The same band drives the over-limit beep (see CheckSpeedAlerts), so the sound fires
+    // on exactly the tick this turns red.
     public string SpeedColor
     {
         get
@@ -208,7 +217,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             var over = SpeedValue - SpeedLimitValue;
             if (over <= 0) return GoodColor;
-            return over <= 5 ? WarningColorAmber : WarningColorRed;
+            return over <= SpeedLimitAlerts.AmberBandUnits ? WarningColorAmber : WarningColorRed;
+        }
+    }
+
+    // Decides when the limit-change beep and the over-limit warning fire - see SpeedLimitAlerts.
+    private readonly SpeedLimitAlerts _speedAlerts = new();
+
+    // Both observers run every snapshot even when their sound is switched off, so their state (what the
+    // limit was, whether the warning is armed) is always current the moment a sound is switched back on.
+    private void CheckSpeedAlerts()
+    {
+        var change = _speedAlerts.ObserveLimit(_snapshot.SpeedLimitKph, HasSpeedLimit);
+        var eligible = _snapshot.SdkActive && !_snapshot.Paused;
+        var crossedIntoRed = _speedAlerts.ObserveSpeed(SpeedValue, SpeedLimitValue, HasSpeedLimit, eligible, DateTime.UtcNow);
+
+        if (crossedIntoRed && _settings.OverLimitBeepEnabled)
+        {
+            // The warning wins: if the limit just dropped UNDER the player, that same tick is both a
+            // limit change and a crossing - one sound at a time plays, and the warning is the one that matters.
+            AlertSound.PlayDoubleBeep(_settings.OverLimitBeepVolume);
+        }
+        else if (change != SpeedLimitChange.None
+                 && _settings.SpeedLimitChangeBeepEnabled
+                 && _speedAlerts.AllowLimitChangeBeep(DateTime.UtcNow))
+        {
+            AlertSound.PlayLimitChangeBeep(change == SpeedLimitChange.Increased, _settings.SpeedLimitChangeBeepVolume);
         }
     }
 
@@ -329,7 +363,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private double TraveledKm()
     {
-        var baselineMeters = _initialNavigationDistanceMeters ?? _snapshot.NavigationDistanceMeters;
+        var baselineMeters = _jobDistance.BaselineMeters ?? _snapshot.NavigationDistanceMeters;
         var traveledKm = (baselineMeters - _snapshot.NavigationDistanceMeters) / 1000.0;
         return Math.Max(0, traveledKm);
     }
@@ -338,7 +372,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // figures self-consistent (always reaches exactly 100% at delivery) even when it disagrees with
     // the job board's quoted distance.
     public string DistanceTotalDisplay =>
-        FormatDistance((_initialNavigationDistanceMeters ?? _snapshot.NavigationDistanceMeters) / 1000.0);
+        FormatDistance((_jobDistance.BaselineMeters ?? _snapshot.NavigationDistanceMeters) / 1000.0);
+
+    // Identifies the job for JobDistanceTracker's saved record. Empty until the job's details have all
+    // arrived, so a half-populated snapshot right after a load can never save under a partial key.
+    private static string BuildJobKey(TelemetrySnapshot s) =>
+        string.IsNullOrEmpty(s.CityDestination) || string.IsNullOrEmpty(s.CargoName)
+            ? ""
+            : string.Join("|", s.Game, s.CitySource, s.CompanySource, s.CityDestination, s.CompanyDestination,
+                s.CargoName, s.Income, s.PlannedDistanceKm);
 
     public bool HasCargo => !string.IsNullOrWhiteSpace(_snapshot.CargoName);
 
@@ -751,10 +793,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnSnapshotUpdated(TelemetrySnapshot snapshot)
     {
-        var wasOnJob = _snapshot.OnJob;
         _snapshot = snapshot;
 
         UpdateDisplayedRange(snapshot);
+        CheckSpeedAlerts();
 
         // Track a running maximum of NavigationDistance as our "how far along the route" baseline,
         // rather than a one-time snapshot at job start or the job's quoted PlannedDistanceKm. A
@@ -764,14 +806,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         // border crossing) - either way, current would end up exceeding a fixed baseline and the
         // subtraction clamps to 0 forever after. Letting the baseline ratchet upward whenever
         // current exceeds it self-heals from both cases instead of latching onto one bad reading.
+        // JobDistanceTracker does that, and also keeps the baseline across a restart of the game or
+        // TruckHub (otherwise a reload part-way along would take the distance REMAINING as the total).
+        _jobDistance.Update(snapshot.OnJob, snapshot.OnJob ? BuildJobKey(snapshot) : "",
+            snapshot.NavigationDistanceMeters, snapshot.PlannedDistanceKm, snapshot.CargoLoaded, DateTime.UtcNow);
+
         if (snapshot.OnJob)
         {
-            if (!wasOnJob || _initialNavigationDistanceMeters is not { } baseline
-                          || snapshot.NavigationDistanceMeters > baseline)
-            {
-                _initialNavigationDistanceMeters = snapshot.NavigationDistanceMeters;
-            }
-
             // Rebuilt every tick rather than only once at delivery - by the time JobDelivered fires,
             // the SDK's own job fields (and our OnJob-gated baseline above) may already have reset for
             // "no job", so OnJobDelivered just commits whatever was last cached here instead of trying
@@ -786,10 +827,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 Income = snapshot.Income,
                 PayoutDisplay = IncomeDisplay,
             };
-        }
-        else
-        {
-            _initialNavigationDistanceMeters = null;
         }
 
         if (snapshot.FuelAverageConsumptionLPerKm > 0.0001f)

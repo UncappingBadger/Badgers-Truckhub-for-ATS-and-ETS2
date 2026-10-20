@@ -21,6 +21,11 @@ public partial class MainWindow : Window
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_ALT = 0x0001;
     private const uint VK_G = 0x47;
+    // Reroute hotkey: Ctrl+Alt+F8. Chosen because F8 is the one key NEITHER game binds anywhere (checked
+    // across every ATS/ETS2 profile's controls) - every letter is bound to something, and a plain bound key
+    // (e.g. R = radio/photo reset) could also fire in-game when read raw while Ctrl+Alt are held.
+    private const int RerouteHotkeyId = 0x5252; // 'RR'
+    private const uint VK_F8 = 0x77;
 
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
@@ -69,7 +74,7 @@ public partial class MainWindow : Window
         _telemetryService = new TelemetryService();
         // Read fresh each call (not captured once) so a mid-session MPH/KM change in Settings takes
         // effect on the next turn-distance update, same as everywhere else that setting is read.
-        _gpsCoordinator = new GpsCoordinator(_telemetryService, () => _settingsService.Load().UseMetric);
+        _gpsCoordinator = new GpsCoordinator(_telemetryService, () => _settingsService.Load().UseMetric, () => _settingsService.Load().AutoRerouteEnabled);
         // Kicked off unconditionally at startup, not just for users who've used GPS before - see
         // GpsCoordinator's own comment for the "why" (a deliberate trade of a little idle
         // background cost for a much faster first GPS-window open).
@@ -111,6 +116,7 @@ public partial class MainWindow : Window
             if (_hwndSource != null)
             {
                 UnregisterHotKey(_hwndSource.Handle, GearCaptureHotkeyId);
+                UnregisterHotKey(_hwndSource.Handle, RerouteHotkeyId);
                 _hwndSource.RemoveHook(WndProc);
             }
 
@@ -144,6 +150,13 @@ public partial class MainWindow : Window
         {
             AppLogger.Log("Warning: could not register Ctrl+Alt+G gear-capture hotkey (already in use by another app?)");
         }
+
+        // Global too, so it works from inside the game: asks the GPS to recompute the route from where the
+        // truck is now. Harmless if the GPS has never been opened or there is no destination.
+        if (_hwndSource != null && !RegisterHotKey(_hwndSource.Handle, RerouteHotkeyId, MOD_CONTROL | MOD_ALT, VK_F8))
+        {
+            AppLogger.Log("Warning: could not register Ctrl+Alt+F8 reroute hotkey (already in use by another app?) - the map's Reroute button still works");
+        }
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -151,6 +164,11 @@ public partial class MainWindow : Window
         if (msg == WM_HOTKEY && wParam.ToInt32() == GearCaptureHotkeyId)
         {
             _gearCaptureService.Capture(_telemetryService.LastSnapshot);
+            handled = true;
+        }
+        else if (msg == WM_HOTKEY && wParam.ToInt32() == RerouteHotkeyId)
+        {
+            _gpsCoordinator.RequestReroute();
             handled = true;
         }
 

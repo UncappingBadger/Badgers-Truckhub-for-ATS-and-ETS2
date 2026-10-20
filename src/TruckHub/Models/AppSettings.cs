@@ -60,6 +60,33 @@ public sealed class AppSettings
     public bool ShowGameClock { get; set; } = true;
     public bool ShowOdometer { get; set; } = true;
 
+    /// <summary>
+    /// Recompute the GPS route automatically as soon as the truck is more than 200 m off it (how earlier
+    /// versions behaved). Default OFF: stopping for fuel or a rest area must not rebuild a route, so instead an
+    /// OFF ROUTE alert + Reroute button (and the Ctrl+Alt+F8 hotkey) appear once the truck is a mile of actual
+    /// driving from the route, and the user decides when to recompute. Both distances are engine metres, which the
+    /// odometer counts as several times more - see Services\OffRouteMonitor.cs (UNITS note).
+    /// </summary>
+    public bool AutoRerouteEnabled { get; set; } = false;
+
+    // Rendering (Settings > App Configure). Both default OFF = everything draws on the GPU, as it always
+    // has. They are independent and each takes effect on the next start. See Services\RenderSettings.cs.
+    /// <summary>Draw the HUD windows (main dash, EXT gauges, ...) with the CPU - WPF software rendering - instead of the GPU.</summary>
+    public bool HudSoftwareRendering { get; set; } = false;
+    /// <summary>Run the GPS map's embedded browser without GPU acceleration, so the map draws on the CPU.</summary>
+    public bool MapSoftwareRendering { get; set; } = false;
+
+    // Speed alerts (main HUD) - audio cues layered on the existing speed sign/colours rather than new
+    // display components. The two sounds are fully independent: each has its own on/off and its own
+    // volume (0-100, 0 = silent, 50 = the default comfortable level, 100 = twice as loud), because the
+    // limit-change beep fires far more often than the warning and wants to be set separately.
+    /// <summary>One beep when the posted speed limit changes: higher tone = went up, lower tone = went down.</summary>
+    public bool SpeedLimitChangeBeepEnabled { get; set; } = true;
+    public int SpeedLimitChangeBeepVolume { get; set; } = 50;
+    /// <summary>Quick double beep when the speed readout turns red (past the 5-over amber band).</summary>
+    public bool OverLimitBeepEnabled { get; set; } = true;
+    public int OverLimitBeepVolume { get; set; } = 50;
+
     // EXT window (extended instruments) display toggles - same "off removes it, reflows" convention
     // as the main dash's own toggles above.
     public bool ShowExtOilPressure { get; set; } = true;

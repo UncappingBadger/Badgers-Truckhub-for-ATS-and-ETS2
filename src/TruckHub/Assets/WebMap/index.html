@@ -43,6 +43,34 @@
   }
   #turn-sign.visible { display: block; }
 
+  /* OFF ROUTE alert (manual-reroute mode, the default): a red warning top-centre plus a Reroute button
+     in the button row, both shown only while the truck is a mile or more from the route. */
+  #off-route-banner {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    display: none;
+    font-family: system-ui, sans-serif;
+    background: #C62828;
+    color: #fff;
+    border: 1px solid #FF8A80;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+  #off-route-banner small { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0; opacity: 0.92; margin-top: 2px; }
+  #off-route-banner.visible { display: block; }
+  #hud-buttons button#reroute-btn { display: none; background: #C62828; color: #fff; border-color: #FF8A80; }
+  #hud-buttons button#reroute-btn:hover { background: #E53935; }
+  #hud-buttons button#reroute-btn.visible { display: block; }
+
   #lan-status {
     position: absolute;
     left: 10px;
@@ -101,6 +129,7 @@
 <body>
 <div id="map"></div>
 <div id="lan-status"></div>
+<div id="off-route-banner">OFF ROUTE<small>Press Reroute (or Ctrl+Alt+F8) to recalculate</small></div>
 <div id="lan-ssl-prompt">
   <div class="card">
     <h3>Enable LAN Mode</h3>
@@ -112,6 +141,7 @@
   </div>
 </div>
 <div id="hud-buttons">
+  <button id="reroute-btn" type="button">Reroute</button>
   <button id="follow-btn" type="button">Follow</button>
   <button id="pin-btn" type="button">Pin</button>
   <button id="clear-pin-btn" type="button">Clear</button>

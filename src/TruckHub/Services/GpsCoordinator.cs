@@ -40,11 +40,27 @@ public sealed class GpsCoordinator
     private Task<(CoreWebView2Environment Env, string UserDataFolder)>? _prewarmedEnvironmentTask;
 
     private readonly Func<bool> _getUseMetric;
+    private readonly Func<bool> _getAutoReroute;
 
-    public GpsCoordinator(TelemetryService telemetryService, Func<bool> getUseMetric)
+    public GpsCoordinator(TelemetryService telemetryService, Func<bool> getUseMetric, Func<bool> getAutoReroute)
     {
         _telemetryService = telemetryService;
         _getUseMetric = getUseMetric;
+        _getAutoReroute = getAutoReroute;
+    }
+
+    /// <summary>The global reroute hotkey (Ctrl+Alt+F8) lands here: recompute the route from the truck's
+    /// current position. Safe when the GPS has never been opened (no view model yet = nothing to reroute).</summary>
+    public void RequestReroute()
+    {
+        var viewModel = _viewModel;
+        if (viewModel == null)
+        {
+            AppLogger.Log("GpsCoordinator: reroute hotkey pressed but the GPS map has not been opened this session - nothing to reroute.");
+            return;
+        }
+
+        viewModel.RerouteNow();
     }
 
     public bool IsLanActive => _lanServer != null;
@@ -64,8 +80,23 @@ public sealed class GpsCoordinator
         var userDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "TruckHub-Dev", "WebView2", Guid.NewGuid().ToString("N"));
-        var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+        var env = await CreateMapEnvironmentAsync(userDataFolder);
         return (env, userDataFolder);
+    }
+
+    /// <summary>
+    /// The one place the map's WebView2 environment is created (the pre-warm above and GpsMapWindow's
+    /// reopen fallback both go through it), so the "draw the GPS map on the CPU" switch applies to every
+    /// path: with it on, the browser starts with GPU acceleration disabled (see RenderSettings); with it
+    /// off, no options are passed at all - exactly the environment TruckHub has always created.
+    /// </summary>
+    public static Task<CoreWebView2Environment> CreateMapEnvironmentAsync(string userDataFolder)
+    {
+        var arguments = RenderSettings.MapBrowserArguments;
+        var options = arguments == null
+            ? null
+            : new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = arguments };
+        return CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder, options: options);
     }
 
     /// <summary>Extraction is idempotent and cheap after the very first real run (a hash check
@@ -93,7 +124,7 @@ public sealed class GpsCoordinator
     public GpsMapViewModel AcquireForWindow()
     {
         _windowOpen = true;
-        var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric);
+        var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric, _getAutoReroute);
         viewModel.PrewarmRoutingGraph();
         return viewModel;
     }
@@ -115,7 +146,7 @@ public sealed class GpsCoordinator
     {
         if (_lanServer == null)
         {
-            var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric);
+            var viewModel = _viewModel ??= new GpsMapViewModel(_telemetryService, _getUseMetric, _getAutoReroute);
             viewModel.PrewarmRoutingGraph();
             var webMapDir = await GetWebMapDirAsync();
             _lanServer = new GpsLanServer(webMapDir, () => viewModel.LastPosition, () => viewModel.LastRoutePoints,

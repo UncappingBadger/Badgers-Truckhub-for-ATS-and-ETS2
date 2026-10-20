@@ -41,6 +41,93 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
+        <!-- Slider in the app's dark look: thin grey track, green fill up to the thumb (same green
+             as the HUD's "good" colour), small light thumb. Horizontal only - the one slider here is
+             the over-limit beep volume. -->
+        <Style TargetType="Slider">
+            <Setter Property="Foreground" Value="#5FD85F" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Background="Transparent" SnapsToDevicePixels="True">
+                            <Border Height="4" CornerRadius="2" Background="#404040" VerticalAlignment="Center" />
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent">
+                                                    <Border Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                                            Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Slider}}" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Focusable="False" Width="12" Height="16">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#DDDDDD" CornerRadius="3" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One row per speed-alert sound: "Volume [slider] 50% [Test]". Dimmed while its sound is off. -->
+        <Style x:Key="VolumeRow" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="20,2,0,14" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <!-- Flat template: the stock Button template paints a bright white box when disabled, which
+             looks wrong on this dark window. -->
+        <Style x:Key="FlatTestButton" TargetType="Button">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Box" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="#3A3A3A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="#4A4A4A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- Browser-style tab: flat top corners only, no chrome of its own - the active tab shares
              the content panel's exact background colour (#1E1E1E) so it visually "merges" straight
              into the panel below, while inactive tabs sit dimmer against the title bar's darker
@@ -255,6 +342,68 @@
 
                         <Button Content="Clear calibration" Command="{Binding ClearCalibrationCommand}"
                                 HorizontalAlignment="Left" />
+
+                        <Rectangle Height="1" Fill="#333333" Margin="0,16,0,16" />
+
+                        <!-- GPS route: manual reroute (default) or automatic. Logic lives in Services\OffRouteMonitor.cs. -->
+                        <TextBlock Text="GPS route" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10">
+                            By default TruckHub leaves your route alone when you pull off it - stopping for fuel, a
+                            rest area or a service station does not rebuild it. If you end up a mile or more from the
+                            route (a mile of actual driving), a red OFF ROUTE warning and a Reroute button appear on the GPS map (the hotkey
+                            Ctrl+Alt+F8 does the same from inside the game), and you choose when to recompute.
+                        </TextBlock>
+                        <CheckBox IsChecked="{Binding AutoRerouteEnabled}">
+                            <TextBlock TextWrapping="Wrap" Text="Recompute the route automatically when I leave it" />
+                        </CheckBox>
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="20,0,0,12">
+                            Turn this on for the earlier behaviour: as soon as you are more than 200 m (about
+                            650 ft) off the route, TruckHub recalculates it for you. Handy if you'd rather never touch a
+                            button, but every fuel stop or rest area off the highway will trigger a recalculation.
+                        </TextBlock>
+                        <Rectangle Height="1" Fill="#333333" Margin="0,16,0,16" />
+
+                        <!-- Rendering: CPU vs GPU drawing. Two independent switches (HUD windows / GPS map), each
+                             applied at startup only - see Services\RenderSettings.cs for why. The full explanation
+                             lives in the manual; this is the short version a user needs to decide. -->
+                        <TextBlock Text="Rendering" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10">
+                            TruckHub normally draws everything on your graphics card (GPU). If your game is already
+                            pushing the GPU hard, you can move TruckHub's drawing onto your processor (CPU) instead.
+                            The two switches are independent and each takes effect the next time TruckHub starts.
+                            Leave both off unless you're having problems.
+                        </TextBlock>
+
+                        <CheckBox IsChecked="{Binding HudSoftwareRendering}">
+                            <TextBlock TextWrapping="Wrap" Text="Draw the HUD windows on the CPU" />
+                        </CheckBox>
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="20,0,0,12">
+                            Covers the main dash, the EXT gauges and TruckHub's other windows. Try it if the HUD
+                            stutters, freezes for a few seconds, or shows black or see-through boxes while your game
+                            is maxing out the GPU. It frees TruckHub's share of GPU time and memory in exchange for a
+                            small amount of CPU.
+                        </TextBlock>
+
+                        <CheckBox IsChecked="{Binding MapSoftwareRendering}">
+                            <TextBlock TextWrapping="Wrap" Text="Draw the GPS map on the CPU" />
+                        </CheckBox>
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="20,0,0,12">
+                            The map runs in a built-in browser; this turns the browser's graphics acceleration off so
+                            your CPU draws the map instead. Try it if the map competes with your game for the GPU.
+                            In testing it held the same 30 frames per second using about 13% of one CPU core while
+                            following a truck, on a fast desktop processor - on a slower CPU, or a game that is
+                            already CPU-bound, leave it off.
+                        </TextBlock>
+
+                        <TextBlock Foreground="#FFC24C" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"
+                                   Text="TRUCKHUB_RENDER is set on this PC and is overriding both switches."
+                                   Visibility="{Binding RenderOverrideActive, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,0"
+                                    Visibility="{Binding RenderRestartNeeded, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="Restart TruckHub to apply your change." Foreground="#FFC24C" FontSize="11"
+                                       VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <Button Content="Restart now" Command="{Binding RestartCommand}" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- UI Setup: units, which HUD components show, and the fatigue toggle (which is
@@ -294,6 +443,50 @@
                         <CheckBox Content="Fuel economy (MPG / L per 100km)" IsChecked="{Binding ShowFuelEconomy}" />
                         <CheckBox Content="AdBlue" IsChecked="{Binding ShowAdBlue}" />
                         <CheckBox Content="Warning lights" IsChecked="{Binding ShowWarnings}" Margin="0,0,0,16" />
+
+                        <Rectangle Height="1" Fill="#333333" Margin="0,0,0,16" />
+
+                        <!-- Speed alerts: cues layered on the speed limit sign / speed colours -->
+                        <TextBlock Text="Speed alerts" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10">
+                            Quiet audio cues so you don't have to keep glancing at the speed. Each sound has its own switch and its own volume (0 = silent).
+                        </TextBlock>
+                        <!-- Two independent sounds, each with its own on/off, volume and Test button. Check box content is a
+                             wrapping TextBlock (a plain string Content never wraps and ran off the window edge). -->
+                        <CheckBox IsChecked="{Binding SpeedLimitChangeBeepEnabled}">
+                            <TextBlock TextWrapping="Wrap"
+                                       Text="Single beep when the speed limit changes (higher tone = limit up, lower tone = limit down)" />
+                        </CheckBox>
+                        <StackPanel Style="{StaticResource VolumeRow}" IsEnabled="{Binding SpeedLimitChangeBeepEnabled}">
+                            <TextBlock Text="Volume" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center"
+                                       Margin="0,0,10,0" />
+                            <Slider Width="140" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    SmallChange="5" LargeChange="10" VerticalAlignment="Center"
+                                    Value="{Binding SpeedLimitChangeBeepVolume, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding SpeedLimitChangeBeepVolumeLabel}" Foreground="#CCCCCC" FontSize="12"
+                                       Width="40" TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,10,0" />
+                            <Button Content="Test" Command="{Binding PreviewLimitChangeBeepCommand}"
+                                    Style="{StaticResource FlatTestButton}"
+                                    ToolTip="Plays the limit-up beep, then the limit-down beep" />
+                        </StackPanel>
+
+                        <CheckBox IsChecked="{Binding OverLimitBeepEnabled}">
+                            <TextBlock TextWrapping="Wrap"
+                                       Text="Double beep when the speed turns red (more than 5 over the limit)" />
+                        </CheckBox>
+                        <StackPanel Style="{StaticResource VolumeRow}" IsEnabled="{Binding OverLimitBeepEnabled}"
+                                    Margin="20,2,0,16">
+                            <TextBlock Text="Volume" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center"
+                                       Margin="0,0,10,0" />
+                            <Slider Width="140" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    SmallChange="5" LargeChange="10" VerticalAlignment="Center"
+                                    Value="{Binding OverLimitBeepVolume, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding OverLimitBeepVolumeLabel}" Foreground="#CCCCCC" FontSize="12"
+                                       Width="40" TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,10,0" />
+                            <Button Content="Test" Command="{Binding PreviewBeepCommand}"
+                                    Style="{StaticResource FlatTestButton}"
+                                    ToolTip="Plays the over-limit double beep" />
+                        </StackPanel>
 
                         <Rectangle Height="1" Fill="#333333" Margin="0,0,0,16" />
 

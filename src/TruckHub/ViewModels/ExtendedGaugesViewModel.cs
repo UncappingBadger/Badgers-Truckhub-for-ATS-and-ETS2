@@ -153,10 +153,16 @@ public sealed class ExtendedGaugesViewModel : INotifyPropertyChanged, IDisposabl
 
     // Scaled around the game's own per-vehicle low-battery warning threshold rather than a fixed
     // number - ATS trucks run 12V electrical systems, ETS2 trucks run 24V, so a single hardcoded
-    // range would peg a 12V ATS truck's needle at the low end permanently. Falls back to a plausible
-    // 24V-system range if the SDK hasn't reported a threshold yet (e.g. the instant after connecting).
-    private float BatteryVoltMin => _snapshot.BatteryVoltageWarnThreshold > 0.1f ? _snapshot.BatteryVoltageWarnThreshold * 0.85f : 18f;
-    private float BatteryVoltMax => _snapshot.BatteryVoltageWarnThreshold > 0.1f ? _snapshot.BatteryVoltageWarnThreshold * 1.35f : 30f;
+    // range would peg a 12V ATS truck's needle at the low end permanently. The SCS Telemetry Hub
+    // doesn't publish that threshold (only the legacy SDK reader did), so without one the range comes
+    // from the game's electrical system instead: ATS 12V (alternator ~13.5-14.5V) vs ETS2 24V
+    // (~27-28V). The 24V range is also what an unrecognised game gets.
+    private float BatteryVoltMin =>
+        _snapshot.BatteryVoltageWarnThreshold > 0.1f ? _snapshot.BatteryVoltageWarnThreshold * 0.85f
+        : _snapshot.Game == SimGame.Ats ? 10f : 18f;
+    private float BatteryVoltMax =>
+        _snapshot.BatteryVoltageWarnThreshold > 0.1f ? _snapshot.BatteryVoltageWarnThreshold * 1.35f
+        : _snapshot.Game == SimGame.Ats ? 16f : 30f;
 
     public double BatteryFraction => Powered ? Math.Clamp((_snapshot.BatteryVoltage - BatteryVoltMin) / (BatteryVoltMax - BatteryVoltMin), 0, 1) : 0;
     public double BatteryNeedleAngle => NeedleAngle(BatteryFraction);

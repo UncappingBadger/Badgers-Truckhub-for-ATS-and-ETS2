@@ -86,6 +86,11 @@ public sealed class TelemetrySnapshot
     public string CargoName { get; init; } = "";
     public float CargoMassKg { get; init; }
 
+    /// <summary>True once the job's cargo is actually on the trailer (the SDK's job.cargo.loaded). False between
+    /// accepting a job and picking its trailer up - the truck may still be hauling the PREVIOUS trailer then. Sources
+    /// that cannot say report true.</summary>
+    public bool CargoLoaded { get; init; } = true;
+
     public float FuelLiters { get; init; }
     public float FuelCapacityLiters { get; init; }
     public float FuelAverageConsumptionLPerKm { get; init; }

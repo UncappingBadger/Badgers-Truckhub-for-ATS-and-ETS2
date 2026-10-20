@@ -67,6 +67,9 @@ public static class RoutingService
 
         var destX = graph.NodeX[endNode];
         var destZ = graph.NodeZ[endNode];
+        var edgeOffsets = graph.EdgeOffsets;
+        var edgeTargets = graph.EdgeTargets;
+        var edgeWeights = graph.EdgeWeights;
 
         // Edge weights are travel TIME in seconds now, not distance (see GENERATION.md - routes
         // were preferring winding back roads over the interstate because a shorter route isn't
@@ -129,22 +132,25 @@ public static class RoutingService
 
             var currentG = gScore.GetValueOrDefault(current, float.MaxValue);
 
-            foreach (var edge in graph.Adjacency[current.Node])
+            var edgeEnd = edgeOffsets[current.Node + 1];
+            for (var edge = edgeOffsets[current.Node]; edge < edgeEnd; edge++)
             {
+                var to = edgeTargets[edge];
+
                 // Hard U-turn prevention: never immediately backtrack onto the node we just came
                 // from - the single biggest source of nonsense routes without it.
-                if (edge.To == current.PrevNode)
+                if (to == current.PrevNode)
                 {
                     continue;
                 }
 
-                var next = new SearchState(edge.To, current.Node);
-                var tentativeG = currentG + edge.Weight;
+                var next = new SearchState(to, current.Node);
+                var tentativeG = currentG + edgeWeights[edge];
                 if (tentativeG < gScore.GetValueOrDefault(next, float.MaxValue))
                 {
                     gScore[next] = tentativeG;
                     cameFrom[next] = current;
-                    open.Enqueue(next, tentativeG + Heuristic(edge.To));
+                    open.Enqueue(next, tentativeG + Heuristic(to));
                 }
             }
         }

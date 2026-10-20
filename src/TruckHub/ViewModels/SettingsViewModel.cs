@@ -84,6 +84,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 
         SelectAppConfigureTabCommand = new RelayCommand(_ => SetActiveTab(appConfigure: true));
         SelectUiSetupTabCommand = new RelayCommand(_ => SetActiveTab(appConfigure: false));
+
+        PreviewBeepCommand = new RelayCommand(_ => AlertSound.PlayDoubleBeep(OverLimitBeepVolume));
+        RestartCommand = new RelayCommand(_ => RestartApp());
+
+        // The two tones overlap if started together (one sound at a time), so the second waits for the first.
+        PreviewLimitChangeBeepCommand = new RelayCommand(_ => _ = Task.Run(async () =>
+        {
+            var volume = SpeedLimitChangeBeepVolume;
+            AlertSound.PlayLimitChangeBeep(increased: true, volume);
+            await Task.Delay(500);
+            AlertSound.PlayLimitChangeBeep(increased: false, volume);
+        }));
     }
 
     public ICommand SelectAppConfigureTabCommand { get; }
@@ -477,6 +489,127 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         get => _settings.ShowWarnings;
         set { _settings.ShowWarnings = value; _settingsService.Save(_settings); OnPropertyChanged(); }
     }
+
+    public bool AutoRerouteEnabled
+    {
+        get => _settings.AutoRerouteEnabled;
+        set { _settings.AutoRerouteEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    // ---- Rendering (App Configure tab): CPU vs GPU drawing, two independent switches, each needing a restart.
+    // RenderSettings holds what THIS process started with; RenderRestartNeeded compares the saved choice to it.
+
+    public bool HudSoftwareRendering
+    {
+        get => _settings.HudSoftwareRendering;
+        set
+        {
+            _settings.HudSoftwareRendering = value;
+            _settingsService.Save(_settings);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RenderRestartNeeded));
+        }
+    }
+
+    public bool MapSoftwareRendering
+    {
+        get => _settings.MapSoftwareRendering;
+        set
+        {
+            _settings.MapSoftwareRendering = value;
+            _settingsService.Save(_settings);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RenderRestartNeeded));
+        }
+    }
+
+    /// <summary>True when the saved choice differs from what the running TruckHub started with - shows the restart prompt.</summary>
+    public bool RenderRestartNeeded => RenderSettings.RestartNeeded(_settings);
+
+    /// <summary>True when the TRUCKHUB_RENDER environment variable is forcing both switches, so the checkboxes have no effect.</summary>
+    public bool RenderOverrideActive => RenderSettings.HudSource != "setting";
+
+    public ICommand RestartCommand { get; }
+
+    private static void RestartApp()
+    {
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            // If the new copy couldn't be started, don't close this one - the user would be left with nothing.
+            AppLogger.Log($"Restart failed: {ex.Message}");
+            return;
+        }
+
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    public bool SpeedLimitChangeBeepEnabled
+    {
+        get => _settings.SpeedLimitChangeBeepEnabled;
+        set { _settings.SpeedLimitChangeBeepEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    /// <summary>0-100, independent of the over-limit warning's volume. Clamped so a hand-edited settings.json can't push the slider out of range.</summary>
+    public int SpeedLimitChangeBeepVolume
+    {
+        get => Math.Clamp(_settings.SpeedLimitChangeBeepVolume, 0, 100);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (clamped == _settings.SpeedLimitChangeBeepVolume)
+            {
+                return;
+            }
+
+            _settings.SpeedLimitChangeBeepVolume = clamped;
+            _settingsService.Save(_settings);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SpeedLimitChangeBeepVolumeLabel));
+        }
+    }
+
+    public string SpeedLimitChangeBeepVolumeLabel => $"{SpeedLimitChangeBeepVolume}%";
+
+    /// <summary>Plays the limit-up beep then the limit-down beep at this sound's own volume, so both tones can be heard.</summary>
+    public ICommand PreviewLimitChangeBeepCommand { get; }
+
+    public bool OverLimitBeepEnabled
+    {
+        get => _settings.OverLimitBeepEnabled;
+        set { _settings.OverLimitBeepEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    /// <summary>0-100. Clamped here so a hand-edited settings.json can't push the slider out of range.</summary>
+    public int OverLimitBeepVolume
+    {
+        get => Math.Clamp(_settings.OverLimitBeepVolume, 0, 100);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (clamped == _settings.OverLimitBeepVolume)
+            {
+                return;
+            }
+
+            _settings.OverLimitBeepVolume = clamped;
+            _settingsService.Save(_settings);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(OverLimitBeepVolumeLabel));
+        }
+    }
+
+    public string OverLimitBeepVolumeLabel => $"{OverLimitBeepVolume}%";
+
+    /// <summary>Plays the beep at the slider's current volume so the user can set it by ear.</summary>
+    public ICommand PreviewBeepCommand { get; }
 
     public bool ShowGameClock
     {

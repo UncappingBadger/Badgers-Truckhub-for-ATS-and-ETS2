@@ -14,44 +14,18 @@ project was used only as a development-time tool or a design reference, that's n
 
 ## Software distributed with TruckHub
 
-### SCS SDK Client
-Source: https://github.com/RenCloud/scs-sdk-plugin
-License: MIT (Copyright (c) 2014 Hans)
-
-The telemetry layer that reads live data from ATS/ETS2 (`src/TruckHub/Telemetry/SCSSdkClient/`)
-is built on this library. Full license text: `src/TruckHub/Telemetry/SCSSdkClient/LICENSE.txt`.
-
-> The MIT License (MIT)
->
-> Copyright (c) 2014 Hans
->
-> Permission is hereby granted, free of charge, to any person obtaining a copy of
-> this software and associated documentation files (the "Software"), to deal in
-> the Software without restriction, including without limitation the rights to
-> use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-> the Software, and to permit persons to whom the Software is furnished to do so,
-> subject to the following conditions:
->
-> The above copyright notice and this permission notice shall be included in all
-> copies or substantial portions of the Software.
->
-> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-> FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-> COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-> IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-> CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+> **Earlier releases:** TruckHub up to v2.3.1 also shipped RenCloud's "SCS SDK Client"
+> (https://github.com/RenCloud/scs-sdk-plugin, MIT, Copyright (c) 2014 Hans) - its C# telemetry reader and its
+> `scs-telemetry.dll` game plugin. Both were removed from TruckHub in v2.4.0, so nothing from that project is
+> distributed in this version; its MIT notice stays with the earlier releases that contained it.
 
 ### SCS Telemetry Hub
 Source: in-house (same author as TruckHub, not yet published as a separate public repo)
 License: MIT
 
-TruckHub's primary telemetry source (`scs_telemetry_hub.dll`, auto-installed alongside the SCS SDK
-Client plugin above). Built to add telemetry the unmaintained SCS SDK Client plugin never will,
-including ATS's Road Trip DLC "Quick Job" personal-car courier jobs. Publishes the same live data
-as an SDK Client-compatible plugin but over a local JSON/HTTP+SSE feed instead of shared memory; the
-SDK Client plugin stays installed alongside it as the dormant fallback path (`TelemetryService.
-UseScsTelemetryHub`). It's our own code, not third-party, but it's built on the open-source crates
+TruckHub's telemetry source (`scs_telemetry_hub.dll`, auto-installed into the games' plugin folders).
+Built to add telemetry the unmaintained RenCloud SCS SDK plugin never did, including ATS's Road Trip DLC
+"Quick Job" personal-car courier jobs, and published over a local JSON/HTTP+SSE feed. It's our own code, not third-party, but it's built on the open-source crates
 below, which are compiled directly into the distributed binary.
 
 #### scs-sdk-plugin / scs-sdk / scs-sdk-sys / scs-sdk-plugin-macros

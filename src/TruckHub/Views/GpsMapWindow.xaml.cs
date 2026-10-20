@@ -72,6 +72,7 @@ public partial class GpsMapWindow : Window
         _viewModel.LivePositionUpdated += OnLivePositionUpdated;
         _viewModel.RouteUpdated += OnRouteUpdated;
         _viewModel.NextTurnUpdated += OnNextTurnUpdated;
+        _viewModel.OffRouteChanged += OnOffRouteChanged;
 
         // If this window is reopening while the shared view model was kept alive by LAN Mode, its
         // events already fired for the "current" state before this window existed to hear them -
@@ -95,6 +96,7 @@ public partial class GpsMapWindow : Window
             _viewModel.LivePositionUpdated -= OnLivePositionUpdated;
             _viewModel.RouteUpdated -= OnRouteUpdated;
             _viewModel.NextTurnUpdated -= OnNextTurnUpdated;
+            _viewModel.OffRouteChanged -= OnOffRouteChanged;
             CoreBalancer.FpsRecommendationChanged -= _onFpsRecommendationChanged;
             // The coordinator owns the view model now, not this window - it only actually disposes
             // it once nothing (this window, or LAN Mode) needs it anymore.
@@ -152,7 +154,7 @@ public partial class GpsMapWindow : Window
                 _webView2UserDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "TruckHub-Dev", "WebView2", Guid.NewGuid().ToString("N"));
-                env = await CoreWebView2Environment.CreateAsync(userDataFolder: _webView2UserDataFolder);
+                env = await GpsCoordinator.CreateMapEnvironmentAsync(_webView2UserDataFolder);
             }
 
             var webMapDir = await webMapDirTask;
@@ -231,6 +233,10 @@ public partial class GpsMapWindow : Window
                         // immediately rather than leaving the page looking like it's off.
                         PushLanStatus(_coordinator.GetLanUrlIfActive());
 
+                        // Same reasoning for the OFF ROUTE alert: a window opened (or a page reloaded) while the
+                        // truck is already a mile off route must show it now, not at the next change.
+                        PushOffRoute(_viewModel.IsOffRoute);
+
                         // Only registered here, not right after EnsureCoreWebView2Async - the GPU
                         // process specifically doesn't exist until the page's own JS actually
                         // initializes a WebGL context (MapLibre's `new Map(...)`), and "mapReady"
@@ -251,6 +257,11 @@ public partial class GpsMapWindow : Window
                     else if (messageType == "clearPin")
                     {
                         _viewModel.ClearManualDestination();
+                    }
+                    else if (messageType == "reroute")
+                    {
+                        // The map's Reroute button (only visible while the OFF ROUTE alert is showing).
+                        _viewModel.RerouteNow();
                     }
                     else if (messageType == "toggleLan")
                     {
@@ -373,6 +384,30 @@ public partial class GpsMapWindow : Window
                 type = "route",
                 points = points.Select(p => new[] { p.Lon, p.Lat }).ToArray(),
             });
+            MapWebView.CoreWebView2.PostWebMessageAsJson(json);
+        });
+    }
+
+    private void OnOffRouteChanged(bool active)
+    {
+        if (!_webViewReady)
+        {
+            return; // the mapReady handler replays the current state once the page can receive it.
+        }
+
+        PushOffRoute(active);
+    }
+
+    private void PushOffRoute(bool active)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (MapWebView.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            var json = JsonSerializer.Serialize(new { type = "offRoute", active });
             MapWebView.CoreWebView2.PostWebMessageAsJson(json);
         });
     }

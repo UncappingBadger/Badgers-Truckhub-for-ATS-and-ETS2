@@ -28,6 +28,10 @@ what and why).*
   attention
 - **Current speed** — its own gauge with a ring that fills as you speed up, coloured green while
   you're at or under the limit, amber up to 5 over, red beyond that
+- **Speed alerts** — two quiet audio cues so you don't have to keep glancing at the speed: a single beep
+  whenever the posted speed limit changes (higher tone = limit went up, lower tone = it went down), and a
+  short double beep the moment your speed turns red (more than 5 over). Each sound has its own on/off
+  switch, its own volume slider and a Test button in Settings → UI Setup → Speed alerts
 - **Odometer** — a six-digit mechanical-style ticker under the speedometer, tracking lifetime
   distance and flashing on every rollover, just like the real thing
 - **Cruise control** — lit up when it's on, showing the speed it's set to
@@ -60,13 +64,14 @@ overlay — the window reflows to fit whatever's left on.
 
 Just run `TruckHub.exe`. That's it.
 
-It automatically finds your ETS2 / ATS install(s) via Steam and installs the small telemetry
-plugins it needs — no manual setup required. If a game isn't found automatically (a non-Steam
-copy, or a drive Steam doesn't see), open Settings and point it at the install folder yourself.
+It automatically finds your ETS2 / ATS install(s) via Steam and installs its small telemetry
+plugin (`scs_telemetry_hub.dll`) — no manual setup required. If a game isn't found automatically
+(a non-Steam copy, or a drive Steam doesn't see), open Settings and point it at the install folder
+yourself.
 
-If another tool has installed its own build of `scs-telemetry.dll` and left a manifest (a `.json`
-naming that file) beside it in the plugins folder, TruckHub leaves that file alone rather than
-overwriting it with its bundled copy.
+That is the only plugin TruckHub puts in your game folders. The old RenCloud `scs-telemetry.dll`
+plugin is no longer part of TruckHub at all (nothing reads it any more), and TruckHub never touches a
+plugin that another tool has claimed with a manifest (a `.json` in the plugins folder naming the file).
 
 One thing to check in-game: **Options → Gameplay → HUD → Route Advisor: speed limit** needs to be
 turned on, since that's what feeds the speed limit sign.
@@ -105,14 +110,26 @@ each other. That's a limitation of what the SCS SDK exposes, not a bug.
 On the map itself: real MUTCD-style highway shields (Interstate/US Route/State Route in ATS, green
 E-road/motorway/expressway and blue national/regional plates in ETS2), pictogram markers for fuel,
 service, rest stops, and weigh stations, and every delivery company's real in-game name and logo at
-its marker. ATS also shows a green advance-guide next-turn sign in the map's bottom-right corner
-while a route is active — which way the next turn goes and how far off it is — toggleable from the
-map's own toolbar (ETS2 support planned).
+its marker. A next-turn sign (green in ATS, European blue in ETS2) sits in the map's bottom-right corner
+while a route is active — which way the next turn goes and how far off it is, in the distances the game
+itself shows — toggleable from the map's own toolbar.
 
 **LAN Mode**, toggled from the map's own toolbar, lets you view your live position and route from any
 browser on your local network — a phone or tablet propped on the dash, for instance. Nothing needs
 installing on the other device, and it's read-only: placing a pin or turning LAN Mode on/off only
 ever happens from the PC itself.
+
+### Leaving the route (reroute on your terms)
+
+Pulling off for fuel or a rest area - even down an access road - does **not** rebuild your GPS route, and the
+route line stays as it was. If you end up a **mile or more** from the route, the map shows a red **OFF ROUTE**
+warning at the top and a **Reroute** button appears in the button row; press it (or **Ctrl+Alt+F8**, which works
+from inside the game) to recompute from where you are. The warning clears by itself once you are back on the
+route. Prefer the old behaviour? **Settings → App Configure → GPS route → "Recompute the route automatically
+when I leave it"** recalculates as soon as you are more than 200 m (about 650 ft) off, with no button needed.
+(A "mile" here is a mile of actual driving - about a minute at highway speed. The in-game odometer counts several
+miles for it - roughly 3 on slow roads, 15 or more on motorways, a steady 16 in a multiplayer convoy - because the
+games squeeze their maps and run the clock fast.) Phones and tablets viewing the map over LAN Mode see the route but not the OFF ROUTE alert.
 
 ### The EXT window
 
@@ -121,6 +138,22 @@ have room for: analog gauges for oil pressure, oil temperature, water temperatur
 and brake air pressure/temperature; a suspension-deflection readout per wheel on both truck and
 trailer, with lift/tag axles clearly labelled; and accessory wear. Every element can be switched on
 or off individually from its own settings window, same as the main dashboard.
+
+### Rendering options (performance)
+
+TruckHub draws on your graphics card (GPU) by default. If your game is already pushing the GPU hard,
+**Settings → App Configure → Rendering** has two independent switches that move TruckHub's drawing onto
+your processor (CPU) instead - leave both off unless you have a problem:
+
+- **Draw the HUD windows on the CPU** - for a HUD that stutters, freezes for seconds or shows black /
+  see-through boxes while the game is maxing out the GPU. Frees TruckHub's GPU time and memory for a small
+  amount of CPU.
+- **Draw the GPS map on the CPU** - for a game that slows down mainly while the GPS map is open on a GPU that
+  is already near its limit. The map keeps its frame rate but costs more processor time, so skip this on a
+  slower CPU or a CPU-bound game.
+
+Each takes effect on the next start (Settings offers a **Restart now** button), and neither affects the
+game itself. The manual explains how to choose between them.
 
 ### Suggested mod load order
 
@@ -176,12 +209,11 @@ when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
 
 ## Credits & third-party software
 
-TruckHub's primary telemetry source is its own SCS Telemetry Hub plugin, built on
-[AptS-1547/scs-sdk-crates](https://github.com/AptS-1547/scs-sdk-crates) (MIT) — it's what reads
-data the older [RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin) (MIT, also
-still bundled as a dormant fallback) never learned to, including ATS's Road Trip DLC Quick Job
-data. The live GPS map is rendered with [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)
-(BSD-3-Clause) — all distributed as part of TruckHub. The GPS map's underlying tile and route
+TruckHub's telemetry source is its own SCS Telemetry Hub plugin, built on
+[AptS-1547/scs-sdk-crates](https://github.com/AptS-1547/scs-sdk-crates) (MIT). It replaces the older
+[RenCloud/scs-sdk-plugin](https://github.com/RenCloud/scs-sdk-plugin) (MIT) that earlier TruckHub versions were
+built on, which could not see ATS's Road Trip DLC Quick Job data and is no longer included. The live GPS map is
+rendered with [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) — all distributed as part of TruckHub. The GPS map's underlying tile and route
 data were generated using [TruckSim Maps](https://github.com/truckermudgeon/maps) (GPL-3.0) as a
 development-time tool, and its routing engine was designed after studying
 [TruckNav-Sim](https://github.com/Rares-Muntean/TruckNav-Sim) (GPL-3.0) as a reference, with no

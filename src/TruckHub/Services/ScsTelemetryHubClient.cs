@@ -11,13 +11,10 @@ using TruckHub.Models;
 namespace TruckHub.Services;
 
 /// <summary>
-/// Alternative telemetry source: reads the independent SCS Telemetry Hub plugin's local HTTP/SSE
-/// feed (see F:\Claude Projects\ScsTelemetryHub - a from-scratch replacement for RenCloud's
-/// unmaintained-since-2023 shared-memory plugin, built after that plugin was confirmed unable to
-/// see ATS's Road Trip DLC "Quick Job" data at all) instead of reading shared memory directly.
-/// Not yet the default - see TelemetryService.UseScsTelemetryHub. This class only produces raw
-/// TelemetrySnapshot values and named gameplay events; all edge-detection/logging (job started,
-/// connected/disconnected) lives in TelemetryService so it behaves identically regardless of source.
+/// TruckHub's telemetry source: reads the SCS Telemetry Hub plugin's local HTTP/SSE feed (see
+/// F:\Claude Projects\ScsTelemetryHub - TruckHub's own plugin, which also sees ATS's Road Trip DLC
+/// "Quick Job" data). This class only produces raw TelemetrySnapshot values and named gameplay events;
+/// all edge-detection/logging (job started, connected/disconnected) lives in TelemetryService.
 /// </summary>
 public sealed class ScsTelemetryHubClient : IDisposable
 {
@@ -28,7 +25,11 @@ public sealed class ScsTelemetryHubClient : IDisposable
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly HttpClient _httpClient = new();
+    // No overall timeout: the hub sends the /stream response headers together with its first message, so
+    // while the game is paused or at a menu a legitimate connect can sit waiting indefinitely (the
+    // default 100 s timeout would tear it down and flash "disconnected"). The /snapshot fallback poll
+    // below applies its own short per-request timeout instead.
+    private readonly HttpClient _httpClient = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly CancellationTokenSource _cts = new();
 
     public event Action<TelemetrySnapshot>? SnapshotUpdated;
@@ -41,6 +42,9 @@ public sealed class ScsTelemetryHubClient : IDisposable
 
     private async Task RunAsync(CancellationToken token)
     {
+        // Runs for the life of the client (ends with the token); see PollWhileStreamSilentAsync.
+        _ = Task.Run(() => PollWhileStreamSilentAsync(token), CancellationToken.None);
+
         while (!token.IsCancellationRequested)
         {
             try
@@ -70,6 +74,21 @@ public sealed class ScsTelemetryHubClient : IDisposable
         }
     }
 
+    // The hub broadcasts a "snapshot" roughly every 100 ms of game render time. If its stream goes quiet
+    // while the game is still running (seen live: after a game reload reset the render clock, the hub's
+    // throttle held every stream snapshot back for minutes while GET /snapshot stayed perfectly current),
+    // TruckHub would sit on the last frame - looking frozen, engine "idling" with the engine actually off.
+    // So whenever no stream snapshot has arrived for StreamSilenceLimit, a poller (started once, independent
+    // of the stream connection - a connect made DURING a stall never even receives response headers) reads
+    // GET /snapshot, which carries the same JSON as a stream snapshot, until the stream speaks again.
+    // A paused game or a menu is also "silent" - harmless, the polled snapshot just says game_paused.
+    private static readonly TimeSpan StreamSilenceLimit = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan SnapshotPollInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan SnapshotPollFailureBackoff = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SnapshotPollTimeout = TimeSpan.FromSeconds(3);
+    private readonly object _emitLock = new();
+    private long _lastStreamSnapshotTick = Environment.TickCount64;
+
     private async Task ConnectAndStreamAsync(CancellationToken token)
     {
         using var response = await _httpClient.GetAsync(
@@ -86,12 +105,71 @@ public sealed class ScsTelemetryHubClient : IDisposable
             }
             if (line.StartsWith("data: ", StringComparison.Ordinal))
             {
-                HandleMessage(line[6..]);
+                HandleMessage(line[6..], fromStream: true);
             }
         }
     }
 
-    private void HandleMessage(string json)
+    private async Task PollWhileStreamSilentAsync(CancellationToken token)
+    {
+        var polling = false;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(SnapshotPollInterval, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            var silentFor = TimeSpan.FromMilliseconds(
+                Environment.TickCount64 - Interlocked.Read(ref _lastStreamSnapshotTick));
+            if (silentFor < StreamSilenceLimit)
+            {
+                if (polling)
+                {
+                    polling = false;
+                    AppLogger.Log("ScsTelemetryHubClient: stream snapshots resumed - back to the stream");
+                }
+                continue;
+            }
+
+            try
+            {
+                using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
+                request.CancelAfter(SnapshotPollTimeout);
+                var body = await _httpClient.GetStringAsync($"{BaseUrl}/snapshot", request.Token);
+                if (!polling)
+                {
+                    polling = true;
+                    AppLogger.Log(
+                        $"ScsTelemetryHubClient: no stream snapshot for {silentFor.TotalSeconds:0.0} s while /snapshot " +
+                        "answers (game paused, or the hub's stream stalled) - polling /snapshot until the stream resumes");
+                }
+                HandleMessage(body, fromStream: false);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // Hub not running (game closed) or mid-restart: quiet by design, same as the stream retry loop.
+                try
+                {
+                    await Task.Delay(SnapshotPollFailureBackoff, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void HandleMessage(string json, bool fromStream)
     {
         JsonDocument doc;
         try
@@ -110,17 +188,27 @@ public sealed class ScsTelemetryHubClient : IDisposable
             switch (type)
             {
                 case "snapshot":
+                    if (fromStream)
+                    {
+                        Interlocked.Exchange(ref _lastStreamSnapshotTick, Environment.TickCount64);
+                    }
                     var message = doc.RootElement.Deserialize<HubSnapshotMessage>(JsonOptions);
                     if (message is not null)
                     {
-                        SnapshotUpdated?.Invoke(BuildSnapshot(message));
+                        lock (_emitLock)
+                        {
+                            SnapshotUpdated?.Invoke(BuildSnapshot(message));
+                        }
                     }
                     break;
                 case "event":
                     var name = doc.RootElement.GetProperty("data").GetProperty("name").GetString();
                     if (name is not null)
                     {
-                        GameplayEvent?.Invoke(name);
+                        lock (_emitLock)
+                        {
+                            GameplayEvent?.Invoke(name);
+                        }
                     }
                     break;
                 // "job" fires immediately on a job change for consumers that want lower latency
@@ -135,9 +223,8 @@ public sealed class ScsTelemetryHubClient : IDisposable
     /// <summary>
     /// Minutes left to deliver (negative once late). The SDK's delivery_time is an ABSOLUTE in-game
     /// deadline on the same clock as game.time, so remaining = deadline - game time; it only moves
-    /// as the game clock does (driving, resting). Same guard as the legacy shared-memory path
-    /// (SCSTelemetry.SetDeliveryTime) so both telemetry sources agree: no deadline or no game
-    /// clock yet means 0, never a deadline-sized number.
+    /// as the game clock does (driving, resting). No deadline or no game clock yet means 0, never a
+    /// deadline-sized number.
     /// </summary>
     private static int RemainingDeliveryMinutesFor(HubJob job, uint gameTimeMinutes)
     {
@@ -201,6 +288,7 @@ public sealed class ScsTelemetryHubClient : IDisposable
             CompanyDestinationId = job.DestinationCompanyId,
             CargoName = job.Cargo,
             CargoMassKg = job.CargoMassKg,
+            CargoLoaded = job.CargoLoaded,
             FuelLiters = data.FuelLiters,
             FuelCapacityLiters = truckSpec.FuelCapacityLiters,
             FuelAverageConsumptionLPerKm = data.FuelAverageConsumption,
@@ -331,6 +419,7 @@ public sealed class ScsTelemetryHubClient : IDisposable
         public bool Active { get; set; }
         public string Cargo { get; set; } = "";
         public float CargoMassKg { get; set; }
+        public bool CargoLoaded { get; set; } = true; // absent from older hub builds: treat as loaded
         public string SourceCity { get; set; } = "";
         public string SourceCompany { get; set; } = "";
         public string DestinationCity { get; set; } = "";

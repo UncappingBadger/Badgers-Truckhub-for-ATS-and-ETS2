@@ -22,8 +22,22 @@ public sealed class GpsMapViewModel : IDisposable
     // How far off the currently-displayed route the truck can be before it's treated as a real
     // deviation (missed turn, deliberate detour) rather than just normal route-following
     // imprecision (interchange curve approximations, fallback edges, lane width) - see AdvanceRoute.
-    // Tunable; picked conservatively so ordinary curve slop doesn't trigger spurious reroutes.
-    private const double OffRouteThresholdMeters = 200.0;
+    // Tunable; picked conservatively so ordinary curve slop doesn't trigger spurious reroutes. What
+    // happens PAST it depends on the user's auto-reroute setting - see OffRouteMonitor.
+    private const double OffRouteThresholdMeters = OffRouteMonitor.RecomputeThresholdMeters;
+
+    // The off-route decision rules (auto-recompute at 200 m, or - the default - a manual alert at one mile; both are
+    // engine metres, i.e. actual driving - see OffRouteMonitor's UNITS note). Reading the setting costs a file load, so it is cached briefly rather than read per tick.
+    private readonly OffRouteMonitor _offRoute = new();
+
+    // The truck's own measure of displayed distance per engine metre on the road it is on right now (the game's
+    // time acceleration: 3 in towns .. 15-20 on highways); scales the next-turn distance. See DisplayScaleEstimator.
+    private readonly DisplayScaleEstimator _displayScale = new();
+    private SimGame _displayScaleGame = SimGame.Unknown;
+    private readonly Func<bool> _getAutoReroute;
+    private bool _autoRerouteCached;
+    private DateTime _autoRerouteReadUtc = DateTime.MinValue;
+    private static readonly TimeSpan AutoRerouteCacheTtl = TimeSpan.FromSeconds(5);
 
     private readonly TelemetryService _telemetryService;
     private DateTime _lastPushUtc = DateTime.MinValue;
@@ -90,10 +104,17 @@ public sealed class GpsMapViewModel : IDisposable
     public event Action<IReadOnlyList<(double Lon, double Lat)>>? RouteUpdated;
 
     /// <summary>Fires with the next detected turn ahead on the current route (direction + an
-    /// already-unit-formatted distance string), or null when there's no route or no turn within
-    /// range. ATS only for now - see TurnDetector's own reasoning; ETS2 support is a deliberate
-    /// follow-up once this is confirmed working, not an oversight.</summary>
+    /// already-unit-formatted distance string in the distances the game itself shows - see
+    /// TurnDistanceFormatter), or null when there's no route or no turn within range. Both games.</summary>
     public event Action<(bool IsRight, string DistanceDisplay)?>? NextTurnUpdated;
+
+    /// <summary>Fires when the OFF ROUTE alert turns on (true) or off (false) - the map shows a red
+    /// warning and a Reroute button while it's on. Manual (default) mode only; see OffRouteMonitor.</summary>
+    public event Action<bool>? OffRouteChanged;
+
+    /// <summary>Current alert state, so a map window that opens (or reloads) mid-alert can show it
+    /// immediately instead of waiting for the next change.</summary>
+    public bool IsOffRoute => _offRoute.IsOffRoute;
 
     /// <summary>Latest known position/route, kept alongside the events above - GpsLanServer polls
     /// these directly (it has no window/event-subscriber of its own to push into) rather than
@@ -115,11 +136,59 @@ public sealed class GpsMapViewModel : IDisposable
 
     private readonly Func<bool> _getUseMetric;
 
-    public GpsMapViewModel(TelemetryService telemetryService, Func<bool> getUseMetric)
+    public GpsMapViewModel(TelemetryService telemetryService, Func<bool> getUseMetric, Func<bool> getAutoReroute)
     {
         _telemetryService = telemetryService;
         _getUseMetric = getUseMetric;
+        _getAutoReroute = getAutoReroute;
         _telemetryService.SnapshotUpdated += OnSnapshotUpdated;
+    }
+
+    /// <summary>The user's "recompute automatically" choice, re-read at most every few seconds so a change
+    /// in Settings takes effect promptly without a file load on every position tick.</summary>
+    private bool ReadAutoReroute()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _autoRerouteReadUtc > AutoRerouteCacheTtl)
+        {
+            _autoRerouteReadUtc = now;
+            try
+            {
+                _autoRerouteCached = _getAutoReroute();
+            }
+            catch
+            {
+                // Keep the last known value - a settings read failing must never break route tracking.
+            }
+        }
+
+        return _autoRerouteCached;
+    }
+
+    /// <summary>Raises <see cref="OffRouteChanged"/> only if the alert was actually showing.</summary>
+    private void ResetOffRouteAlert()
+    {
+        if (_offRoute.Reset())
+        {
+            OffRouteChanged?.Invoke(false);
+        }
+    }
+
+    /// <summary>
+    /// The user asked for a new route (the map's Reroute button, or the Ctrl+Alt+F8 hotkey): recompute from
+    /// the truck's current position to the same destination. Works whether or not the OFF ROUTE alert is
+    /// showing. Does nothing - harmlessly - if there is no destination or no position yet.
+    /// </summary>
+    public void RerouteNow()
+    {
+        if (_currentDestinationResolver == null || !_hasKnownPosition)
+        {
+            AppLogger.Log("GpsMapViewModel: reroute requested but there is no active route/destination or live position - ignored.");
+            return;
+        }
+
+        AppLogger.Log("GpsMapViewModel: reroute requested by the user - recomputing from the current position.");
+        RunRouteComputation(_lastKnownGameX, _lastKnownGameZ, _currentDestinationResolver);
     }
 
     private void OnSnapshotUpdated(TelemetrySnapshot snapshot)
@@ -153,6 +222,14 @@ public sealed class GpsMapViewModel : IDisposable
         }
 
         _lastPushUtc = nowUtc;
+
+        if (_displayScaleGame != snapshot.Game)
+        {
+            _displayScale.Reset(); // a different game (or a fresh connection) starts the road-scale estimate over
+            _displayScaleGame = snapshot.Game;
+        }
+
+        _displayScale.Update(snapshot.PositionX, snapshot.PositionZ, snapshot.OdometerKm);
         _lastKnownGameX = snapshot.PositionX;
         _lastKnownGameZ = snapshot.PositionZ;
         _hasKnownPosition = true;
@@ -177,6 +254,7 @@ public sealed class GpsMapViewModel : IDisposable
         var route = _remainingRoutePoints; // stable local snapshot of the current reference
         if (route.Count < 2)
         {
+            ResetOffRouteAlert(); // nothing to be off of
             NextTurnUpdated?.Invoke(null);
             return; // no active route to trim/check.
         }
@@ -212,13 +290,41 @@ public sealed class GpsMapViewModel : IDisposable
             }
         }
 
-        if (Math.Sqrt(nearestDistSq) > OffRouteThresholdMeters)
+        var distanceToRoute = Math.Sqrt(nearestDistSq);
+
+        // While a (re)computation is already running, the route being measured against is about to be
+        // replaced - judging "off route" against it would just re-raise the alert the user dismissed by
+        // asking for the reroute.
+        if (distanceToRoute > OffRouteThresholdMeters && _routeComputationInFlight)
         {
-            if (_currentDestinationResolver != null)
+            return;
+        }
+
+        var autoReroute = ReadAutoReroute();
+        var action = _offRoute.Evaluate(distanceToRoute, autoReroute, out var alertChanged);
+        if (alertChanged)
+        {
+            AppLogger.Log(_offRoute.IsOffRoute
+                ? $"GpsMapViewModel: {distanceToRoute:F0}m of game world (one mile of real driving = {OffRouteMonitor.AlertThresholdMeters:F0}m; about {distanceToRoute * (_displayScale.Scale ?? TurnDistanceFormatter.DisplayedPerEngineUnit(_activeGame)) / 1609.344:F0} odometer miles at this road's scale) from the route - OFF ROUTE alert shown, waiting for the user to ask for a reroute."
+                : "GpsMapViewModel: back on the route - OFF ROUTE alert cleared.");
+            OffRouteChanged?.Invoke(_offRoute.IsOffRoute);
+        }
+
+        if (distanceToRoute > OffRouteThresholdMeters)
+        {
+            if (action == OffRouteAction.RecomputeNow && _currentDestinationResolver != null)
             {
-                AppLogger.Log($"GpsMapViewModel: {Math.Sqrt(nearestDistSq):F0}m off route - recomputing.");
+                AppLogger.Log($"GpsMapViewModel: {distanceToRoute:F0}m off route - recomputing.");
                 RunRouteComputation(x, z, _currentDestinationResolver);
             }
+            else if (!autoReroute)
+            {
+                // Manual mode and not on the route: the next-turn arrow belongs to the route the truck is
+                // no longer on, so hide it rather than point somewhere misleading. The route line itself
+                // stays exactly as it was - pulling in for fuel or a rest area must not rebuild it.
+                NextTurnUpdated?.Invoke(null);
+            }
+
             return;
         }
 
@@ -237,34 +343,19 @@ public sealed class GpsMapViewModel : IDisposable
             UpdateLastRoutePoints(trimmed);
         }
 
-        // ATS only for now - see TurnDetector's own comment and NextTurnUpdated's. The ETS2 side is
-        // a deliberate, separate follow-up once this is confirmed working on real ATS driving.
-        if (_activeGame != SimGame.Ats)
+        // Both games. ATS was confirmed on real driving first; ETS2 uses the same detector (the SDK's world
+        // axes are identical) and the same sign, in the European blue the map's national-road plates use.
+        // TurnDetector measures in engine metres - the formatter scales that up to the distances the game shows.
+        if (!GameMapProfile.IsSupported(_activeGame))
         {
             NextTurnUpdated?.Invoke(null);
             return;
         }
 
         var turn = TurnDetector.FindNextTurn(_remainingRoutePoints);
-        NextTurnUpdated?.Invoke(turn == null ? null : (turn.Value.IsRight, FormatTurnDistance(turn.Value.DistanceMeters)));
-    }
-
-    /// <summary>Mirrors the app's existing MI/KM convention (whole-unit for a "near" distance,
-    /// decimal for a "far" one) - feet under roughly a fifth of a mile, otherwise miles to one
-    /// decimal; meters under a kilometer, otherwise km to one decimal.</summary>
-    private string FormatTurnDistance(double meters)
-    {
-        if (_getUseMetric())
-        {
-            return meters < 1000
-                ? $"{Math.Round(meters / 10) * 10:F0} M"
-                : $"{meters / 1000:F1} KM";
-        }
-
-        var feet = meters * 3.28084;
-        return feet < 1000
-            ? $"{Math.Round(feet / 50) * 50:F0} FT"
-            : $"{feet / 5280:F1} MI";
+        NextTurnUpdated?.Invoke(turn == null
+            ? null
+            : (turn.Value.IsRight, TurnDistanceFormatter.Format(turn.Value.DistanceMeters, _activeGame, _getUseMetric(), _displayScale.Scale)));
     }
 
     private void UpdateLastRoutePoints(IReadOnlyList<(double X, double Z, double Lon, double Lat)> route)
@@ -282,6 +373,7 @@ public sealed class GpsMapViewModel : IDisposable
         _remainingRoutePoints = Array.Empty<(double, double, double, double)>();
         _currentDestinationResolver = null;
         LastRoutePoints = Array.Empty<(double, double)>();
+        ResetOffRouteAlert();
         RouteUpdated?.Invoke(Array.Empty<(double, double)>());
         NextTurnUpdated?.Invoke(null);
     }
@@ -386,6 +478,7 @@ public sealed class GpsMapViewModel : IDisposable
         // caller needing to remember to set it themselves.
         _currentDestinationResolver = resolveDestination;
         _routeComputationInFlight = true;
+        ResetOffRouteAlert(); // a new route is on its way from the truck's current position
         var game = _activeGame;
         Task.Run(() => ComputeRoute(startX, startZ, resolveDestination, game));
     }

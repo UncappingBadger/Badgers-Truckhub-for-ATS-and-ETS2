@@ -1,5 +1,76 @@
 # Changelog
 
+## v2.4.0 - 2026-10-18
+
+### Added
+- Speed limit change beep: a single short beep whenever the posted speed limit changes - a higher
+  tone when it goes up, a lower tone when it goes down. It never sounds for a unit switch or when
+  limit data first appears after loading, and at most once every 3 seconds when limits change in
+  quick succession.
+- Over-limit warning sound: a short, quiet double beep the moment your speed turns red (more than 5
+  over the limit - the same point the speed readout changes from amber to red). It sounds once per
+  crossing, not continuously, and never on connect or when unpausing while already over. If the
+  limit drops under you, you hear the warning rather than both sounds.
+- Both sounds have their own on/off switch, volume slider (0-100%, default 50%) and Test button under
+  Settings > UI Setup > Speed alerts. They are independent, so the frequent limit beep can be turned
+  down without touching the warning.
+- Rendering options (Settings > App Configure > Rendering): two independent switches choose whether
+  TruckHub's HUD windows and its GPS map are drawn by the graphics card (GPU, the default) or the
+  processor (CPU). Useful when a game is already maxing out the GPU and TruckHub's HUD stutters, freezes
+  or shows black boxes, or the GPS map competes with the game. Each takes effect on the next start, and
+  Settings offers a Restart now button.
+- The GPS map's next-turn sign now works in Euro Truck Simulator 2 as well as American Truck Simulator. It is the
+  same sign in European blue (the colour of that map's national-road plates), shows the turn direction and
+  distance the same way, and follows your speed unit (miles and feet, or kilometres and metres).
+
+### Changed
+- The GPS map no longer rebuilds your route by itself when you leave it. Stopping for fuel or a rest area -
+  including down a side road - used to trigger a full recalculation as soon as you were 200 m (about 650 ft) off
+  the route. Now nothing happens until you are a mile or more from it; then a red OFF ROUTE warning appears at the
+  top of the map together with a **Reroute** button, and you choose when to recompute (the button, or Ctrl+Alt+F8
+  from inside the game). The warning clears once you are back on the route, and the next-turn arrow is hidden
+  while you are off it so it cannot point you wrong. These are miles of actual driving (about a minute at highway
+  speed): the games squeeze their maps and run the clock fast, so the odometer counts several miles for each one -
+  about 3 on slow roads and in towns, 15 on UK motorways, a steady 16 in a multiplayer convoy. Settings > App
+  Configure > GPS route has "Recompute the route automatically when I leave it" to restore the old behaviour
+  (recalculate beyond 200 m); it is off by default.
+- TruckHub now installs only its own SCS Telemetry Hub plugin into your game folders, and the old RenCloud
+  telemetry plugin and the code that read it have been removed from TruckHub completely - nothing used them, and
+  every extra plugin is one more module that can fault when a game exits. Copies already in your plugins folder
+  are left exactly as they are.
+- The GPS route finder now uses about a fifth of the memory. Its road network is stored in a compact
+  layout (roughly 50 MB for the American map, 62 MB for the European, down from 226 MB and 284 MB), which
+  should take around 175-220 MB off TruckHub's memory while the GPS map is open. Route search is a little faster
+  as a side effect, and the routes themselves are unchanged (verified identical on 600 random routes across both
+  maps).
+
+### Fixed
+- The next-turn sign's distance read a small fraction of the real figure (a turn the in-game GPS called "1 mile"
+  showed as roughly 270 ft). The sign was counting miles of actual driving, while the odometer and the in-game GPS
+  count several miles for each - and how many changes with the road (about 3 in towns, 15 on UK motorways, a steady
+  16 in a multiplayer convoy). It now measures that ratio from your own odometer and movement as you drive and scales
+  the distance to match the in-game GPS; replayed over a real ETS2 drive it was within about 5% for the next
+  few hundred metres, where a fixed factor was out by a factor of five or more. A turn beyond a change of road
+  type can still be a little off.
+- If the telemetry hub's live stream goes quiet while the game is still running (seen after a game
+  reload resets the game's clock), TruckHub now keeps up by reading the hub's snapshot directly
+  instead of sitting on the last frame it received - which could leave the gauges showing the
+  engine idling long after it was switched off.
+- The GPS map's files are no longer unpacked again (about five minutes of heavy CPU and memory use) after every
+  update or UI change - only when the map's own content actually changes.
+- The Distance card no longer forgets the job's total length when you close TruckHub, or quit and reload the game,
+  part-way through a job. It used to take the distance *remaining* at that moment as the new total (a 1,100-mile
+  job reloaded 600 miles from the end read "of 597 mi" and the miles already driven vanished). The total is now
+  saved per job and restored on the next launch; it is cleared when the job is delivered or cancelled. For a job
+  TruckHub first meets part-way along (nothing saved), the total starts from the job's quoted length instead.
+- The EXT window's battery gauge needle sat on its minimum permanently in American Truck Simulator (the readout
+  was right, the needle was not): it was scaled for a 24 V truck, and the telemetry hub doesn't report the
+  truck's battery warning level for it to scale from. It now uses a 12 V scale for ATS.
+- The EXT window no longer keeps showing a trailer that has left your truck. When the game takes the trailer away
+  from the truck (for example through a menu), the telemetry hub used to keep reporting the old trailer as attached
+  with its last readings, so the trailer section stayed filled in. It now reports the trailer as detached, and the
+  section reads "No trailer attached" until the next one is hooked up.
+
 ## v2.3.1 - 2026-10-11
 
 ### Fixed
