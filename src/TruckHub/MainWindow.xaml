@@ -32,7 +32,28 @@
              card's own scaling while docked, rather than staying a fixed size independent of it -
              popping it out into LogWindow is what gives it its own independent size instead. -->
         <Viewbox Stretch="Uniform">
-        <Grid>
+        <Grid x:Name="ContentRoot">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Docked ALIGN drawer: sits ABOVE the card (row 0), the opposite of the job log which slides out to the
+             right. Same idea as LogDrawerBorder: it lives inside this Viewbox so it scales with the card, and an
+             animated Height (0 when closed) is what opens it - MainWindow then grows the window upward by the same
+             on-screen amount so the card does not move. The outer Border carries only the animated height and the
+             clip; the inner one draws the panel and keeps a 4-unit gap above the card. AlignView has no size of its
+             own - it fills whatever the animated height currently is. Collapsed while closed so a closed drawer draws
+             and costs nothing. Width matches the card (400), not the whole row, so it stays over the card when the
+             job log is also open. -->
+        <Border x:Name="AlignDrawerBorder" Grid.Row="0" Width="400" Height="0" HorizontalAlignment="Left"
+                ClipToBounds="True" Visibility="Collapsed">
+            <Border Margin="0,0,0,4" Background="#E6161616" BorderBrush="#404040" BorderThickness="1" CornerRadius="10">
+                <views:AlignView x:Name="AlignPanel" Margin="10" PopOutRequested="AlignView_PopOutRequested" />
+            </Border>
+        </Border>
+
+        <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
@@ -71,7 +92,7 @@
                                VerticalAlignment="Center" />
                     <TextBlock Text="By Badger" Foreground="#FFC24C" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
-                    <TextBlock x:Name="VersionTag" Text="v2.4.0" Foreground="#888888" FontSize="11" FontWeight="Bold"
+                    <TextBlock x:Name="VersionTag" Text="v2.5.0" Foreground="#888888" FontSize="11" FontWeight="Bold"
                                VerticalAlignment="Center" Margin="8,0,0,0" />
                 </StackPanel>
 
@@ -755,6 +776,14 @@
              than the open/closed chevron it used to show - SetDockedOpen/LogView_PopOutRequested no
              longer touch its Content as a result. -->
         <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <!-- ALIGN: hitch alignment. Same tab style as the others, but five letters need a taller tab, and it
+                 opens ABOVE the card (see AlignDrawerBorder) instead of to the right. Also on a global hotkey. -->
+            <Button x:Name="AlignToggleButton" Click="ToggleAlign_Click" Margin="0,0,0,4"
+                    Width="18" Height="68" FontSize="10" FontWeight="Bold"
+                    Background="#E6161616" Foreground="#AAAAAA" BorderBrush="#404040" BorderThickness="0,1,1,1"
+                    Padding="0" Cursor="Hand" ToolTip="Hitch alignment (Ctrl+Alt+.)">
+                <TextBlock TextAlignment="Center" LineStackingStrategy="BlockLineHeight" LineHeight="13">A<LineBreak />L<LineBreak />I<LineBreak />G<LineBreak />N</TextBlock>
+            </Button>
             <Button Click="GpsMap_Click" Margin="0,0,0,4"
                     Width="18" Height="42" FontSize="10" FontWeight="Bold"
                     Background="#E6161616" Foreground="#AAAAAA" BorderBrush="#404040" BorderThickness="0,1,1,1"
@@ -793,6 +822,7 @@
                 Background="#E6161616" BorderBrush="#404040" BorderThickness="0,1,1,1">
             <views:JobLogView x:Name="LogView" Margin="10" PopOutRequested="LogView_PopOutRequested" />
         </Border>
+        </Grid>
         </Grid>
         </Viewbox>
     </Grid>

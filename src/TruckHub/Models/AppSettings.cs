@@ -76,6 +76,20 @@ public sealed class AppSettings
     /// <summary>Run the GPS map's embedded browser without GPU acceleration, so the map draws on the CPU.</summary>
     public bool MapSoftwareRendering { get; set; } = false;
 
+    /// <summary>
+    /// The global Ctrl+Alt+. hotkey that opens and closes the ALIGN (hitch alignment) window from inside the game. On by default;
+    /// the switch exists so a user whose other software already owns that combination can free it. The ALIGN tab works either way.
+    /// </summary>
+    public bool AlignHotkeyEnabled { get; set; } = true;
+
+    /// <summary>
+    /// The ALIGN window's parking-sensor beeps (slow beeps that speed up as the kingpin gets closer, a steady tone at the pin, panned
+    /// toward the side it is on). They only sound while the ALIGN window is open. Own on/off and own 0-100 volume (50 = the same
+    /// comfortable level as the speed alerts), independent of those alerts.
+    /// </summary>
+    public bool AlignBeepsEnabled { get; set; } = true;
+    public int AlignBeepVolume { get; set; } = 50;
+
     // Speed alerts (main HUD) - audio cues layered on the existing speed sign/colours rather than new
     // display components. The two sounds are fully independent: each has its own on/off and its own
     // volume (0-100, 0 = silent, 50 = the default comfortable level, 100 = twice as loud), because the

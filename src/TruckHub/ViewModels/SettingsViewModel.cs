@@ -86,6 +86,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         SelectUiSetupTabCommand = new RelayCommand(_ => SetActiveTab(appConfigure: false));
 
         PreviewBeepCommand = new RelayCommand(_ => AlertSound.PlayDoubleBeep(OverLimitBeepVolume));
+        PreviewAlignBeepsCommand = new RelayCommand(_ => _ = AlignBeepDemo.PlayAsync(AlignBeepVolume));
         RestartCommand = new RelayCommand(_ => RestartApp());
 
         // The two tones overlap if started together (one sound at a time), so the second waits for the first.
@@ -494,6 +495,44 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _settings.AutoRerouteEnabled;
         set { _settings.AutoRerouteEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    /// <summary>ALIGN parking-sensor beeps on/off. MainWindow re-reads settings when this dialog closes and hands them to the ALIGN window.</summary>
+    public bool AlignBeepsEnabled
+    {
+        get => _settings.AlignBeepsEnabled;
+        set { _settings.AlignBeepsEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
+    }
+
+    /// <summary>0-100, independent of the speed alerts' volumes. Clamped so a hand-edited settings.json can't push the slider out of range.</summary>
+    public int AlignBeepVolume
+    {
+        get => Math.Clamp(_settings.AlignBeepVolume, 0, 100);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (clamped == _settings.AlignBeepVolume)
+            {
+                return;
+            }
+
+            _settings.AlignBeepVolume = clamped;
+            _settingsService.Save(_settings);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AlignBeepVolumeLabel));
+        }
+    }
+
+    public string AlignBeepVolumeLabel => $"{AlignBeepVolume}%";
+
+    /// <summary>Plays a short made-up approach (beeps speeding up, the steady tone, then the too-fast and past-the-hook sounds) at the slider's volume.</summary>
+    public ICommand PreviewAlignBeepsCommand { get; }
+
+    /// <summary>ALIGN hotkey (Ctrl+Alt+.) on/off. MainWindow re-reads settings when this dialog closes and registers or releases the hotkey.</summary>
+    public bool AlignHotkeyEnabled
+    {
+        get => _settings.AlignHotkeyEnabled;
+        set { _settings.AlignHotkeyEnabled = value; _settingsService.Save(_settings); OnPropertyChanged(); }
     }
 
     // ---- Rendering (App Configure tab): CPU vs GPU drawing, two independent switches, each needing a restart.

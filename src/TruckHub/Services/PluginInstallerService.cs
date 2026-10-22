@@ -20,6 +20,9 @@ public sealed record PluginInstallResult(string GameName, bool Installed, string
 /// Another tool may own the file: if a sidecar manifest (a *.json in the plugins folder whose "TargetFileName"
 /// names the DLL) claims it, the file is left strictly alone - never overwritten, never created - so a user's
 /// own build is never silently swapped for ours on every launch.
+///
+/// It also never DOWNGRADES: a plugin that was built after the one bundled here (a newer TruckHub's, or a test build
+/// dropped in by hand) is left in place - see <see cref="PluginInstallPolicy"/>.
 /// </summary>
 public static class PluginInstallerService
 {
@@ -77,9 +80,15 @@ public static class PluginInstallerService
                         continue;
                     }
 
-                    if (!File.Exists(targetPath) || !BytesMatchFile(bytes, targetPath))
+                    switch (PluginInstallPolicy.Decide(targetPath, bytes, out var installedBuilt, out var bundledBuilt))
                     {
-                        File.WriteAllBytes(targetPath, bytes);
+                        case PluginInstallDecision.InstallNew:
+                        case PluginInstallDecision.Replace:
+                            File.WriteAllBytes(targetPath, bytes);
+                            break;
+                        case PluginInstallDecision.KeepNewer:
+                            notes.Add($"{fileName} left in place: it was built {installedBuilt:yyyy-MM-dd HH:mm} UTC, after the one bundled with this TruckHub ({bundledBuilt:yyyy-MM-dd HH:mm} UTC)");
+                            break;
                     }
                 }
             }
@@ -157,17 +166,5 @@ public static class PluginInstallerService
         using var memory = new MemoryStream();
         stream.CopyTo(memory);
         return memory.ToArray();
-    }
-
-    private static bool BytesMatchFile(byte[] bytes, string filePath)
-    {
-        var info = new FileInfo(filePath);
-        if (info.Length != bytes.Length)
-        {
-            return false;
-        }
-
-        var existing = File.ReadAllBytes(filePath);
-        return existing.AsSpan().SequenceEqual(bytes);
     }
 }

@@ -9,6 +9,20 @@ public enum SimGame
     Ats
 }
 
+/// <summary>
+/// A vehicle's pose in the SCS world: X east, Y up, Z south (metres, double precision); angles are in TURNS
+/// (1.0 = 360 degrees) - heading counter-clockwise from north (0 = north = -Z), pitch about the vehicle's x axis, roll
+/// about its z axis. All zero means "no value yet" (the hub's default), which can never be a real position.
+/// </summary>
+public readonly record struct VehiclePose(double X, double Y, double Z, float Heading, float Pitch, float Roll)
+{
+    public bool IsZero => X == 0 && Y == 0 && Z == 0;
+}
+
+/// <summary>A point in a vehicle's own local space (SCS vehicle space: x right, y up, z BACK, metres) - used for the
+/// truck's fifth-wheel point and the trailer's kingpin point.</summary>
+public readonly record struct LocalPoint(float X, float Y, float Z);
+
 public sealed class TelemetrySnapshot
 {
     public bool SdkActive { get; init; }
@@ -187,6 +201,13 @@ public sealed class TelemetrySnapshot
     public bool[] TruckWheelPowered { get; init; } = Array.Empty<bool>();
     public bool[] TruckWheelSteerable { get; init; } = Array.Empty<bool>();
 
+    /// <summary>The game's id for the truck (e.g. "vehicle.outlaw.w900") - empty from an older hub.</summary>
+    public string TruckId { get; init; } = "";
+
+    /// <summary>Each truck wheel's current steering angle in turns, positive = turned left (the game's own unit; the steered
+    /// wheels are the ones TruckWheelSteerable marks). Drives the ALIGN guide lines. Empty when the hub does not send it.</summary>
+    public float[] TruckWheelSteering { get; init; } = Array.Empty<float>();
+
     // --- Trailer (first attached trailer only - the SDK supports multi-trailer combos, but a single
     // trailer is by far the common case and this only needs a instrument-cluster-style readout, not
     // full doubles/triples support). All default to "no trailer" values when none is attached.
@@ -214,6 +235,25 @@ public sealed class TelemetrySnapshot
     /// above, which are the tractor's own axle).</summary>
     public bool TrailerLiftAxleUp { get; init; }
     public bool TrailerLiftAxleIndicatorOn { get; init; }
+
+    // --- Hitch alignment (ALIGN window). Both vehicles' full world poses are published all the time; the trailer's
+    // keeps updating while it is parked unhooked (including a job's yard trailer, from the moment the job is
+    // accepted), which is what makes guiding a truck onto it possible. The hook points come from the hub's
+    // hook.position decode - null when the hub is too old to send them (or the vehicle has not been described yet).
+    public VehiclePose TruckPose { get; init; }
+    public VehiclePose TrailerPose { get; init; }
+    /// <summary>The truck's fifth-wheel coupling point, truck local space.</summary>
+    public LocalPoint? TruckHookPoint { get; init; }
+    /// <summary>The trailer's kingpin, trailer local space.</summary>
+    public LocalPoint? TrailerHookPoint { get; init; }
+    public string TrailerId { get; init; } = "";
+    /// <summary>The game's own name for the trailer's body (e.g. "curtain", "tarp") and its chain type, as the hub passes them on;
+    /// empty when the game did not say (older game versions, or an older hub).</summary>
+    public string TrailerBodyType { get; init; } = "";
+    public string TrailerChainType { get; init; } = "";
+    /// <summary>Per-wheel positions (trailer local space) and radii: the trailer's real axle layout. Empty when the hub does not send them.</summary>
+    public LocalPoint[] TrailerWheelPositions { get; init; } = Array.Empty<LocalPoint>();
+    public float[] TrailerWheelRadii { get; init; } = Array.Empty<float>();
 
     public static TelemetrySnapshot Disconnected { get; } = new();
 }

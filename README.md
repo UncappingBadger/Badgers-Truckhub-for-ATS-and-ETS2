@@ -57,6 +57,9 @@ what and why).*
 - **Extended Instruments (EXT)** — a second panel for everything the main dashboard doesn't have room
   for: oil/water temps, oil pressure, battery voltage, brake air pressure and temp, suspension
   deflection per wheel, and more (see "The EXT window" below)
+- **ALIGN (hitch alignment)** — a reversing-camera-style view for backing onto a trailer: how far the
+  trailer's kingpin is from your fifth wheel, guide lines that bend with your steering, a slow-down
+  warning, and optional parking-sensor beeps (see "The ALIGN window" below)
 
 Every item above can be turned off individually in Settings if you don't want it cluttering the
 overlay — the window reflows to fit whatever's left on.
@@ -89,14 +92,14 @@ turned on, since that's what feeds the speed limit sign.
   - **App Configure** — check for updates, point TruckHub at a game install manually, calibrate
     gear numbers for an H-shifter truck, and point TruckHub at your mod folder manually if it's
     somewhere nonstandard, choose whether
-    TruckHub's HUD and GPS map are drawn by the GPU or the CPU, and decide whether the GPS recomputes
-    its route automatically when you leave it
+    TruckHub's HUD and GPS map are drawn by the GPU or the CPU, decide whether the GPS recomputes
+    its route automatically when you leave it, and set ALIGN's hotkey and parking-sensor beeps
   - **UI Setup** — switch between MPH/KM-H, Tonnes/Lbs, and Litres/Gallons independently of each
     other; turn any HUD element on or off, including the speed sign, in-game clock, odometer, and
     current-speed gauge separately; and turn on the rest timer if you drive with fatigue simulation
     enabled; the two speed alerts have their own switches and volume sliders here too
-- **GPS / LOG / EXT** — docked tabs for opening the GPS map, job logbook, and Extended Instruments
-  window.
+- **ALIGN / GPS / LOG / EXT** — docked tabs for opening the hitch alignment view (it opens above the
+  main window), the GPS map, the job logbook, and the Extended Instruments window.
 
 ### The GPS map
 
@@ -143,6 +146,30 @@ have room for: analog gauges for oil pressure, oil temperature, water temperatur
 and brake air pressure/temperature; a suspension-deflection readout per wheel on both truck and
 trailer, with lift/tag axles clearly labelled; and accessory wear. Every element can be switched on
 or off individually from its own settings window, same as the main dashboard.
+
+### The ALIGN window
+
+Click the **ALIGN** tab — or press **Ctrl+Alt+.** from inside the game — for a reversing-camera-style
+view that helps you back your truck onto a trailer. It opens above the main window and can be popped out
+into its own resizable window, like the job logbook. It shows how far the trailer's kingpin is from your
+fifth wheel — sideways, behind you and in height — turns green when you are lined up, and draws the
+trailer as a see-through model of its own type (box, refrigerated box, flatbed, tanker or container) with
+its real axle layout. It works for a trailer you have dropped and for a job's trailer waiting in the
+yard, in both games and in either coupling mode.
+
+- **Guide lines that follow your steering** — they bend to show where your fifth wheel will go if you
+  reverse with the wheel as it is now. TruckHub learns how each truck turns from a few seconds of your own
+  driving (any chassis, mods included), keeps refining it, and remembers it per truck in
+  `hitch-steering.json` next to your settings; until it has learned a truck the lines stay straight.
+- **Slow-down warning** — reversing faster than 2 mph (3.2 km/h) with the trailer within 5 m turns the
+  banner red and pulses a red frame around the picture.
+- **Parking-sensor beeps** — slow beeps that speed up as the kingpin gets closer, then one steady tone
+  when you are at it. The pitch tells you how well lined up you are, and the sound moves toward the side
+  the kingpin is on. They only sound while ALIGN is open and the truck is in a reverse gear, with their
+  own on/off switch, volume slider and Test button in **Settings → App Configure → ALIGN**.
+
+ALIGN needs TruckHub's current telemetry plugin, which TruckHub installs for you when it starts (restart
+the game afterwards so it loads).
 
 ### Rendering options (performance)
 
@@ -211,8 +238,8 @@ also check any time yourself with the **Check for Updates** button at the top of
 
 For a complete breakdown of every icon, gauge, and colour code — what each one means and exactly
 when it lights up — see [TruckHub-Manual.pdf](docs/TruckHub-Manual.pdf).
-It also covers the GPS map, the EXT window, the job log, every setting, the mod load order and
-troubleshooting.
+It also covers the ALIGN window, the GPS map, the EXT window, the job log, every setting, the mod load
+order and troubleshooting.
 
 ## Credits & third-party software
 

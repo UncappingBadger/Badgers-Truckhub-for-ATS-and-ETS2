@@ -404,6 +404,51 @@
                                        VerticalAlignment="Center" Margin="0,0,10,0" />
                             <Button Content="Restart now" Command="{Binding RestartCommand}" />
                         </StackPanel>
+
+                        <Rectangle Height="1" Fill="#333333" Margin="0,16,0,16" />
+
+                        <!-- ALIGN: the hitch alignment window. Its tab on the main window always works; this only governs the
+                             global hotkey. Logic lives in MainWindow (ApplyAlignHotkeySetting). -->
+                        <TextBlock Text="ALIGN (hitch alignment)" Foreground="White" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10">
+                            The ALIGN tab opens a reversing-camera-style view that helps you back your truck onto a trailer: it
+                            shows how far the trailer's kingpin is from your fifth wheel - sideways, back and in height - and turns
+                            green when you are lined up. It works for a trailer you have dropped and for a job's trailer waiting
+                            in the yard, in either coupling mode.
+                        </TextBlock>
+                        <CheckBox IsChecked="{Binding AlignHotkeyEnabled}">
+                            <TextBlock TextWrapping="Wrap" Text="Open and close ALIGN with the hotkey Ctrl+Alt+. (period)" />
+                        </CheckBox>
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="20,0,0,12">
+                            Works from inside the game. Neither game uses that key combination. Turn this off if another program
+                            on your PC already uses it - the ALIGN tab keeps working either way.
+                        </TextBlock>
+
+                        <!-- ALIGN beeps: like a car's parking sensor. Own on/off, own volume and Test button, same layout as the
+                             speed alerts. They only ever sound while the ALIGN window is open. -->
+                        <CheckBox IsChecked="{Binding AlignBeepsEnabled}">
+                            <TextBlock TextWrapping="Wrap" Text="Parking-sensor beeps while ALIGN is open" />
+                        </CheckBox>
+                        <StackPanel Style="{StaticResource VolumeRow}" IsEnabled="{Binding AlignBeepsEnabled}">
+                            <TextBlock Text="Volume" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center"
+                                       Margin="0,0,10,0" />
+                            <Slider Width="140" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    SmallChange="5" LargeChange="10" VerticalAlignment="Center"
+                                    Value="{Binding AlignBeepVolume, Mode=TwoWay}" />
+                            <TextBlock Text="{Binding AlignBeepVolumeLabel}" Foreground="#CCCCCC" FontSize="12"
+                                       Width="40" TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,10,0" />
+                            <Button Content="Test" Command="{Binding PreviewAlignBeepsCommand}"
+                                    Style="{StaticResource FlatTestButton}"
+                                    ToolTip="Plays a short made-up approach so you can set the volume by ear" />
+                        </StackPanel>
+                        <TextBlock Foreground="#999999" FontSize="11" TextWrapping="Wrap" Margin="20,0,0,12">
+                            Slow beeps that get faster as the kingpin gets closer (from about 5 m), then one steady tone when you
+                            are at it. A higher pitch means you are lined up, a lower one that you are off line, and the sound
+                            moves toward the side the kingpin is on. Going over 2 mph near the trailer gives a distinct two-tone
+                            warning, and going past the hook gives rapid low beeps. They only sound while the truck is in a reverse
+                            gear (not in neutral or a forward gear), stop when you stop, and only sound while the ALIGN window is
+                            open. Volume 0 is silent.
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- UI Setup: units, which HUD components show, and the fatigue toggle (which is

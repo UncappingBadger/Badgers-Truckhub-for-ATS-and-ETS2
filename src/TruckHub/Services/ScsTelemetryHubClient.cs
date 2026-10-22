@@ -332,6 +332,8 @@ public sealed class ScsTelemetryHubClient : IDisposable
             TruckWheelLift = Map(data.TruckWheels, w => w.Lift),
             TruckWheelPowered = truckSpec.WheelPowered,
             TruckWheelSteerable = truckSpec.WheelSteerable,
+            TruckId = truckSpec.Id,
+            TruckWheelSteering = Map(data.TruckWheels, w => w.Steering),
 
             TrailerAttached = data.Trailer.Connected,
             TrailerName = trailerSpec.Name,
@@ -345,8 +347,26 @@ public sealed class ScsTelemetryHubClient : IDisposable
             TrailerWheelLiftable = trailerSpec.WheelLiftable,
             TrailerLiftAxleUp = data.TrailerLiftAxle,
             TrailerLiftAxleIndicatorOn = data.TrailerLiftAxleIndicator,
+
+            TruckPose = ToPose(data.Placement),
+            TrailerPose = ToPose(data.Trailer.Placement),
+            TruckHookPoint = ToHook(truckSpec.HookPosition),
+            TrailerHookPoint = ToHook(trailerSpec.HookPosition),
+            TrailerId = trailerSpec.Id,
+            TrailerBodyType = trailerSpec.BodyType,
+            TrailerChainType = trailerSpec.ChainType,
+            TrailerWheelPositions = trailerSpec.WheelPositions.ConvertAll(p => new LocalPoint(p.X, p.Y, p.Z)).ToArray(),
+            TrailerWheelRadii = trailerSpec.WheelRadii.ToArray(),
         };
     }
+
+    private static VehiclePose ToPose(HubPlacement p) =>
+        new(p.Position.X, p.Position.Y, p.Position.Z, p.Orientation.Heading, p.Orientation.Pitch, p.Orientation.Roll);
+
+    /// <summary>An all-zero hook point is the hub's "not described yet" default (a real fifth wheel or kingpin is always
+    /// about a metre above its vehicle's origin), so it is treated the same as absent.</summary>
+    private static LocalPoint? ToHook(HubPoint? h) =>
+        h is null || (h.X == 0f && h.Y == 0f && h.Z == 0f) ? null : new LocalPoint(h.X, h.Y, h.Z);
 
     private static float[] Map(List<HubWheelState> wheels, Func<HubWheelState, float> select)
     {
@@ -383,6 +403,7 @@ public sealed class ScsTelemetryHubClient : IDisposable
 
     private sealed class HubTruckSpec
     {
+        public string Id { get; set; } = "";
         public float FuelCapacityLiters { get; set; }
         public float AdblueCapacityLiters { get; set; }
         public float RpmLimit { get; set; }
@@ -393,11 +414,28 @@ public sealed class ScsTelemetryHubClient : IDisposable
         public bool[] WheelPowered { get; set; } = Array.Empty<bool>();
         public bool[] WheelLiftable { get; set; } = Array.Empty<bool>();
         public string ShifterType { get; set; } = "";
+        /// <summary>Fifth-wheel point, truck local space. Absent in hub builds before the hook.position decode.</summary>
+        public HubPoint? HookPosition { get; set; }
+    }
+
+    private sealed class HubPoint
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
     }
 
     private sealed class HubTrailerSpec
     {
+        public string Id { get; set; } = "";
         public string Name { get; set; } = "";
+        public string BodyType { get; set; } = "";
+        public string ChainType { get; set; } = "";
+        /// <summary>Per-wheel position (trailer local space) and radius - absent in hub builds before 0.1.3.</summary>
+        public List<HubPoint> WheelPositions { get; set; } = new();
+        public List<float> WheelRadii { get; set; } = new();
+        /// <summary>Kingpin point, trailer local space. Absent in hub builds before the hook.position decode.</summary>
+        public HubPoint? HookPosition { get; set; }
         public bool[] WheelLiftable { get; set; } = Array.Empty<bool>();
     }
 
@@ -437,12 +475,15 @@ public sealed class ScsTelemetryHubClient : IDisposable
     private sealed class HubVec3
     {
         public double X { get; set; }
+        public double Y { get; set; }
         public double Z { get; set; }
     }
 
     private sealed class HubOrientation
     {
         public float Heading { get; set; }
+        public float Pitch { get; set; }
+        public float Roll { get; set; }
     }
 
     private sealed class HubPlacement
@@ -456,11 +497,15 @@ public sealed class ScsTelemetryHubClient : IDisposable
         public float SuspensionDeflection { get; set; }
         public bool OnGround { get; set; }
         public float Lift { get; set; }
+
+        /// <summary>Wheel steering angle in turns, positive = left.</summary>
+        public float Steering { get; set; }
     }
 
     private sealed class HubTrailerState
     {
         public bool Connected { get; set; }
+        public HubPlacement Placement { get; set; } = new();
         public float CargoDamage { get; set; }
         public float WearBody { get; set; }
         public float WearChassis { get; set; }

@@ -1,5 +1,49 @@
 # Changelog
 
+## v2.5.0 - 2026-10-22
+
+### Added
+- ALIGN window: help with backing a truck onto a trailer. It is a reversing-camera-style view - colour-graded guide
+  lines with cross ticks, a dashed centre line, the trailer's own centreline and a target ring on its kingpin - that
+  shows how far the trailer's kingpin is from your fifth wheel sideways, back and in height, and turns green when you are
+  lined up (within about 5 cm sideways and 5 cm in height, the tightest the games have been seen to accept). Four
+  readouts underneath (side, gap, height, trailer angle) follow your unit setting. The trailer itself is drawn as a 3D
+  model standing where the game has it, in the game's own trailer type (dry van, curtain-sider, refrigerated, flatbed,
+  lowboy, container, tanker, silo and so on) and with its real axle layout; a trailer type from a mod that TruckHub
+  does not know is drawn as a generic box trailer. It fades as it gets close so the road and the target stay visible.
+  It works for a trailer you have dropped
+  and for a job's trailer waiting in the yard (the moment you accept the job), in either coupling mode, in both games. If
+  the trailer is beside or ahead of you it points toward it instead.
+- The ALIGN tab sits with GPS, LOG and EXT on the main window's right edge but opens ABOVE the main window, and like the
+  job log it can be popped out into its own resizable window. It also opens and closes from inside the game with the
+  hotkey Ctrl+Alt+. (period) - a key combination neither game uses. Settings > App Configure > ALIGN has a switch to turn
+  the hotkey off if another program on your PC already uses it. Like the main window and EXT, it shows only "Waiting for
+  ETS2 / ATS to start..." until a game is connected; the picture and readouts appear once it is.
+  The two guide lines follow your steering like a pickup's reversing camera: they bend to show where the fifth wheel
+  will go if you reverse with the wheel as it is now, so you can steer the kingpin between them. Nothing needs setting
+  up: TruckHub learns each truck's turning from a few seconds of driving - mods and every chassis included - and keeps
+  refining it, more accurately each time you drive that truck (what it has learned is kept per truck in
+  hitch-steering.json next to settings.json). The lines stay straight back until it has learned the truck, while driving
+  forward, and once hooked up.
+  It also warns you to slow down: reversing faster than 2 mph (3.2 km/h) with the trailer within 5 m turns the top banner
+  red ("SLOW DOWN" and your speed, in mph or km/h to match your settings) and pulses a red frame around the picture. The
+  game's collision damage grows with the square of the impact speed and has no safe minimum, so this is a baseline to
+  stay well under rather than a guarantee.
+  ALIGN can beep like a car's parking sensor (Settings > App Configure > ALIGN: its own on/off switch and volume, 50 %
+  by default, with a Test button). Slow beeps start about 5 m from the kingpin and get faster as you close in, then it is
+  one steady tone when you are at it. A higher pitch means you are lined up and a lower one that you are off line, and the
+  sound moves toward the side the kingpin is on. Backing in over 2 mph near the trailer gives a distinct two-tone warning,
+  and going past the hook gives rapid low beeps. They only sound while the truck is in a reverse gear, go quiet when you
+  stop, and only sound while the ALIGN window is open.
+
+### Changed
+- The bundled telemetry plugin (SCS Telemetry Hub) is updated to 0.1.3: it now also reports where the fifth wheel and
+  kingpin are, each trailer's body type and wheel layout, and the steering angle of the wheels - what ALIGN is built on.
+- The plugin installer never downgrades the plugin. The plugin files carry no version number, but each one carries the time
+  it was built, so if the plugin already in a game's folder was built after the one bundled with the TruckHub you have
+  just started (a newer TruckHub's, or a test build placed there by hand), it is left alone and the log says so. Before,
+  any plugin that differed from the bundled one was overwritten, which let an older TruckHub replace a newer plugin.
+
 ## v2.4.0 - 2026-10-18
 
 ### Added
