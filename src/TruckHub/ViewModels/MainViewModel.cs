@@ -451,7 +451,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     // AdBlue isn't part of the per-trip consumption estimate the way fuel is (no equivalent
     // trip-needs forecast for it).
-    public bool HasAdBlue => _snapshot.AdBlueCapacityLiters > 0.1f;
+    //
+    // A reported capacity alone isn't proof of a tank: ATS gives every truck, mods included, the default
+    // 80 L capacity even though it has no DEF system, and the level then sits at exactly 0 with the low
+    // warning never raised (recorded: ats vehicle.outlaw.w900; ETS2 trucks that do have a tank read
+    // ~54-80 L). So the bar only shows once the level has been seen above zero on this truck, or the
+    // game itself is warning that a real tank has run low.
+    public bool HasAdBlue =>
+        _snapshot.AdBlueCapacityLiters > 0.1f
+        && (_snapshot.AdBlueLiters > 0.05f || _snapshot.WarnLowAdBlue
+            || (_adBlueSeenOnTruck is not null && _adBlueSeenOnTruck == _snapshot.TruckId));
+
+    // The truck on which a non-zero AdBlue level was last seen, so a tank that has genuinely run dry
+    // (level back to 0, warning not showing with the electrics off) keeps its bar instead of vanishing.
+    private string? _adBlueSeenOnTruck;
 
     private const string WarningColorRed = "#FF4C4C";
     private const string WarningColorAmber = "#FFC24C";
@@ -794,6 +807,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnSnapshotUpdated(TelemetrySnapshot snapshot)
     {
         _snapshot = snapshot;
+        if (snapshot.AdBlueLiters > 0.05f && snapshot.AdBlueCapacityLiters > 0.1f)
+            _adBlueSeenOnTruck = snapshot.TruckId;
 
         UpdateDisplayedRange(snapshot);
         CheckSpeedAlerts();

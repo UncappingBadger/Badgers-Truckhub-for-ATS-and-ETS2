@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.5.1 - 2026-10-25
+
+### Fixed
+- The AdBlue bar no longer shows as permanently empty on trucks that have no AdBlue tank. American Truck Simulator
+  reports a default 80 L capacity for every truck, tank or not, with the level stuck at zero, so the bar was drawn
+  empty for them; it now appears only once the truck's AdBlue level has been above zero (or the game raises the low-AdBlue
+  warning), and stays once seen on that truck.
+
 ## v2.5.0 - 2026-10-22
 
 ### Added
